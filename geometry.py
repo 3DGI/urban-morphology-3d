@@ -52,13 +52,16 @@ def extrude(shape, min, max):
 
     return mesh
 
-def area_by_surface(mesh, tri_mesh=None):
+def area_by_surface(mesh, sloped_angle_threshold=3, tri_mesh=None):
     """Compute the area per semantic surface"""
+
+    sloped_threshold = np.cos(np.radians(sloped_angle_threshold))
 
     area = {
         "GroundSurface": 0,
         "WallSurface": 0,
-        "RoofSurface": 0
+        "RoofSurfaceFlat": 0,
+        "RoofSurfaceSloped": 0
     }
 
     point_count = {
@@ -84,9 +87,18 @@ def area_by_surface(mesh, tri_mesh=None):
 
         points_per_cell = np.array([mesh.cell_n_points(i) for i in range(mesh.number_of_cells)])
 
-        for surface_type in area:
-            triangle_idxs = [s == surface_type for s in tri_mesh.cell_arrays["semantics"]]
-            area[surface_type] = sum(surface_areas[triangle_idxs])
+        for surface_type in ["GroundSurface", "WallSurface", "RoofSurface"]:
+            triangle_idxs_mask = [s == surface_type for s in tri_mesh.cell_arrays["semantics"]]
+            triangle_idxs = [i for i,s in enumerate(tri_mesh.cell_arrays["semantics"]) if s == surface_type]
+
+            if surface_type == "RoofSurface":
+                for idx in triangle_idxs:
+                    if sized.cell_normals[idx].dot([0,0,1]) < sloped_threshold:
+                        area["RoofSurfaceSloped"] += surface_areas[idx]
+                    else:
+                        area["RoofSurfaceFlat"] += surface_areas[idx]
+            else:
+                area[surface_type] = sum(surface_areas[triangle_idxs_mask])
 
             face_idxs = [s == surface_type for s in mesh.cell_arrays["semantics"]]
 
@@ -183,6 +195,9 @@ def intersect_surfaces(meshes):
         inter = polys[0]
         for i in range(1, len(polys)):
             inter = inter.intersection(polys[i])
+
+        if len(polys) > 2: 
+            print(len(polys))
         
         if inter.area > 0.001:
             if inter.type == "MultiPolygon" or inter.type == "GeometryCollection":

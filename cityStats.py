@@ -378,7 +378,7 @@ def process_building(building,
 
     # ch_volume = convexhull_volume(points)
 
-    # area, point_count, surface_count = geometry.area_by_surface(mesh)
+    area, point_count, surface_count = geometry.area_by_surface(mesh)
 
     if "semantics" in geom:
         roof_points = geometry.get_points_of_type(mesh, "RoofSurface")
@@ -425,10 +425,11 @@ def process_building(building,
         # "footprint_perimeter": shape.length,
         # "obb_width": S,
         # "obb_length": L,
-        # "surface_area": mesh.area,
-        # "ground_area": area["GroundSurface"],
-        # "wall_area": area["WallSurface"],
-        # "roof_area": area["RoofSurface"],
+        "surface_area": mesh.area,
+        "ground_area": area["GroundSurface"],
+        "wall_area": area["WallSurface"],
+        "roof_flat_area": area["RoofSurfaceFlat"],
+        "roof_sloped_area": area["RoofSurfaceSloped"],
         # "ground_point_count": point_count["GroundSurface"],
         # "wall_point_count": point_count["WallSurface"],
         # "roof_point_count": point_count["RoofSurface"],
