@@ -12,6 +12,7 @@ import rtree.index
 import scipy.spatial as ss
 from pymeshfix import MeshFix
 from tqdm import tqdm
+from shapely.geometry import Polygon, box
 
 import cityjson
 import geometry
@@ -142,7 +143,6 @@ def get_surface_plot(
 
     return orientation_plot(bin_counts, bin_edges)
     
-
 def azimuth(dx, dy):
     """Returns the azimuth angle for the given coordinates"""
     
@@ -249,27 +249,18 @@ def validate_report(report, cm):
     # TODO: Actually validate the report and that it corresponds to this cm
     return True
 
-def tree_generator_function(cm, verts):
-    for i, objid in enumerate(cm["CityObjects"]):
-        obj = cm["CityObjects"][objid]
+def tree_generator_function(building_meshes):
+    for i, (bid, mesh) in enumerate(building_meshes.items()):
+        xmin, ymin, zmin = np.min(mesh.points, axis=0)
+        xmax, ymax, zmax = np.max(mesh.points, axis=0)
+        yield (i, (xmin, ymin, zmin, xmax, ymax, zmax), bid)
 
-        if len(obj["geometry"]) == 0:
-            continue
-
-        xmin, xmax, ymin, ymax, zmin, zmax = cityjson.get_bbox(obj["geometry"][0], verts)
-        yield (i, (xmin, ymin, zmin, xmax, ymax, zmax), objid)
-
-def get_neighbours(cm, obj, r, verts):
+def get_neighbours(building_meshes, bid, r):
     """Return the neighbours of the given building"""
-
-    building = cm["CityObjects"][obj]
-
-    if len(building["geometry"]) == 0:
-        return []
     
-    geom = building["geometry"][0]
-    xmin, xmax, ymin, ymax, zmin, zmax = cityjson.get_bbox(geom, verts)
-    objids = [n.object
+    xmin, ymin, zmin = np.min(building_meshes[bid].points, axis=0)
+    xmax, ymax, zmax = np.max(building_meshes[bid].points, axis=0)
+    bids = [n.object
             for n in r.intersection((xmin,
                                     ymin,
                                     zmin,
@@ -277,12 +268,12 @@ def get_neighbours(cm, obj, r, verts):
                                     ymax,
                                     zmax),
                                     objects=True)
-            if n.object != obj]
+            if n.object != bid]
 
-    if len(objids) == 0:
-        objids = [n.object for n in r.nearest((xmin, ymin, zmin, xmax, ymax, zmax), 5, objects=True) if n.object != obj]
+    # if len(bids) == 0:
+    #     bids = [n.object for n in r.nearest((xmin, ymin, zmin, xmax, ymax, zmax), 5, objects=True) if n.object != obj]
 
-    return [cm["CityObjects"][objid]["geometry"][0] for objid in objids]
+    return bids
 
 class StatValuesBuilder:
 
@@ -303,54 +294,62 @@ class StatValuesBuilder:
         else:
             self.__values[index_name] = "NC"
 
+def filter_lod(cm, lod='2.2'):
+    for co_id in cm["CityObjects"]:
+        co = cm["CityObjects"][co_id]
+
+        new_geom = []
+
+        for geom in co["geometry"]:
+            if str(geom["lod"]) == str(lod):
+                new_geom.append(geom)
+        
+        co["geometry"] = new_geom
+
 def process_building(building,
-                     obj,
-                     errors,
+                     building_id,
                      filter,
                      repair,
                      plot_buildings,
-                     density_2d,
-                     density_3d,
                      vertices,
-                     neighbours=[],
+                     building_meshes,
+                     neighbour_ids=[],
                      custom_indices=None):
 
-    if not filter is None and filter != obj:
-        return obj, None
+    if not filter is None and filter != building_id:
+        return building_id, None
 
     # TODO: Add options for all skip conditions below
 
     # Skip if type is not Building or Building part
     if not building["type"] in ["Building", "BuildingPart"]:
-        return obj, None
+        return building_id, None
 
     # Skip if no geometry
     if not "geometry" in building or len(building["geometry"]) == 0:
-        return obj, None
+        return building_id, None
 
     geom = building["geometry"][0]
     
     mesh = cityjson.to_polydata(geom, vertices).clean()
 
     try:
-        tri_mesh = cityjson.to_triangulated_polydata(geom, vertices).clean()
+        tri_mesh = building_meshes[building_id]
     except:
-        print(f"{obj} geometry parsing crashed! Omitting...")
-        return obj, {"type": building["type"]}
-
-    tri_mesh, t = geometry.move_to_origin(tri_mesh)
+        print(f"{building_id} geometry parsing crashed! Omitting...")
+        return building_id, {"type": building["type"]}
 
     if plot_buildings:
-        print(f"Plotting {obj}")
+        print(f"Plotting {building_id}")
         tri_mesh.plot(show_grid=True)
 
-    # get_surface_plot(dataset, title=obj)
+    # get_surface_plot(dataset, title=building_id)
 
     # bin_count, bin_edges = get_wall_bearings(mesh, 36)
 
     # xzc, yzc, be = get_roof_bearings(mesh, 36)
-    # plot_orientations(xzc, be, title=f"XZ orientation [{obj}]")
-    # plot_orientations(yzc, be, title=f"YZ orientation [{obj}]")
+    # plot_orientations(xzc, be, title=f"XZ orientation [{building_id}]")
+    # plot_orientations(yzc, be, title=f"YZ orientation [{building_id}]")
 
     # total_xy = total_xy + bin_count
     # total_xz = total_xz + xzc
@@ -449,24 +448,18 @@ def process_building(building,
         # "errors": str(errors),
         # "valid": len(errors) == 0,
         # "hole_count": tri_mesh.n_open_edges,
-        "geometry": shape
+        "geometry": shape,
+        "neighbours": ";".join(neighbour_ids)
     }
 
     if custom_indices is None or len(custom_indices) > 0:
-        # voxel = pv.voxelize(tri_mesh, density=density_3d, check_surface=False)
-        # grid = voxel.cell_centers().points
 
         shared_area = 0
 
-        # closest_distance = 10000
-
-        if len(neighbours) > 0:
+        if len(neighbour_ids) > 0:
             # Get neighbour meshes
-            n_meshes = [cityjson.to_triangulated_polydata(geom, vertices).clean()
-                        for geom in neighbours]
-            
-            for mesh in n_meshes:
-                mesh.points -= t
+            n_meshes = [building_meshes[nid]
+                        for nid in neighbour_ids]
             
             # Compute shared walls
             walls = np.hstack([geometry.intersect_surfaces([fixed, neighbour])
@@ -525,11 +518,25 @@ def process_building(building,
         builder.add_index("shared_walls_area", lambda: shared_area)
         # builder.add_index("closest_distance", lambda: closest_distance)
 
-    return obj, values
+    return building_id, values
+
+class CityModel:
+    def __init__(self, cm) -> None:
+        filter_lod(cm)
+        self.cm = cm
+        
+        if "transform" in cm:
+            s = cm["transform"]["scale"]
+            t = cm["transform"]["translate"]
+            self.verts = [[v[0] * s[0] + t[0], v[1] * s[1] + t[1], v[2] * s[2] + t[2]]
+                    for v in cm["vertices"]]
+        else:
+            self.verts = cm["vertices"]
+        self.vertices = np.array(self.verts)
 
 # Assume semantic surfaces
 @click.command()
-@click.argument("input", type=click.File("rb"))
+@click.argument("inputs", nargs=-1, type=click.File("rb"))
 @click.option('-o', '--output', type=click.File("wb"))
 @click.option('-g', '--gpkg')
 @click.option('-v', '--val3dity-report', type=click.File("rb"))
@@ -540,9 +547,9 @@ def process_building(building,
 @click.option('-s', '--single-threaded', flag_value=True)
 @click.option('-b', '--break-on-error', flag_value=True)
 @click.option('-j', '--jobs', default=1)
-@click.option('--density-2d', default=1.0)
-@click.option('--density-3d', default=1.0)
-def main(input,
+# @click.option('--density-2d', default=1.0)
+# @click.option('--density-3d', default=1.0)
+def main(inputs,
          output,
          gpkg,
          val3dity_report,
@@ -552,102 +559,90 @@ def main(input,
          without_indices,
          single_threaded,
          break_on_error,
-         jobs,
-         density_2d,
-         density_3d):
-    cm = json.load(input)
-
-    if "transform" in cm:
-        s = cm["transform"]["scale"]
-        t = cm["transform"]["translate"]
-        verts = [[v[0] * s[0] + t[0], v[1] * s[1] + t[1], v[2] * s[2] + t[2]]
-                for v in cm["vertices"]]
-    else:
-        verts = cm["vertices"]
+         jobs):
+    cms = []
+    for input in inputs:
+        cms.append( CityModel( json.load(input) ) )
     
-    if val3dity_report is None:
-        report = {}
-    else:
-        report = json.load(val3dity_report)
+    active_tile_name = cms[0].cm['metadata']['citymodelIdentifier']    
+    
+    ge = cms[0].cm['metadata']['geographicalExtent']
+    tile_bb = box(ge[0], ge[1], ge[3], ge[4])
+    t_origin = [(p[0], p[1], 0) for p in tile_bb.centroid.coords]
 
-        if not validate_report(report, cm):
-            print("This doesn't seem like the right report for this file.")
-            return
+    building_meshes = {}
 
-    # mesh points
-    vertices = np.array(verts)
-
-    epointsListSemantics = {}
-
-    stats = {}
-
-    total_xy = np.zeros(36)
-    total_xz = np.zeros(36)
-    total_yz = np.zeros(36)
+    for i, cm in enumerate(cms):
+        for coid, co in cm.cm['CityObjects'].items():
+            if co['type'] == "BuildingPart":
+                if i>0:
+                    if not tile_bb.intersects( Polygon( geometry.get_bbox(co['geometry'][0]) ) ):
+                        continue
+                mesh = cityjson.to_triangulated_polydata(co['geometry'][0], cm.vertices).clean()
+                mesh.points -= t_origin
+                building_meshes[coid] = mesh
 
     # Build the index of the city model
     p = rtree.index.Property()
     p.dimension = 3
-    r = rtree.index.Index(tree_generator_function(cm, vertices), properties=p)
+    r = rtree.index.Index(tree_generator_function(building_meshes), properties=p)
+
+    stats = {}
 
     if single_threaded or jobs == 1:
-        for obj in tqdm(cm["CityObjects"]):
-            errors = get_errors_from_report(report, obj, cm)
-            
-            neighbours = get_neighbours(cm, obj, r, verts)
+        for obj in tqdm(cms[0].cm["CityObjects"]):
+            if cms[0].cm["CityObjects"][obj]["type"] == "BuildingPart":
+                neighbour_ids = get_neighbours(building_meshes, obj, r)
 
-            indices_list = [] if without_indices else None
-            
-            try:
-                obj, vals = process_building(cm["CityObjects"][obj],
-                                obj,
-                                errors,
-                                filter,
-                                repair,
-                                plot_buildings,
-                                density_2d,
-                                density_3d,
-                                vertices,
-                                neighbours,
-                                indices_list)
-                if not vals is None:
-                    stats[obj] = vals
-            except Exception as e:
-                print(f"Problem with {obj}")
-                if break_on_error:
-                    raise e
+                indices_list = [] if without_indices else None
+                
+                try:
+                    obj, vals = process_building(cms[0].cm["CityObjects"][obj],
+                                    obj,
+                                    filter,
+                                    repair,
+                                    plot_buildings,
+                                    cms[0].vertices,
+                                    building_meshes,
+                                    neighbour_ids,
+                                    indices_list)
+                    if not vals is None:
+                        stats[obj] = vals
+                except Exception as e:
+                    print(f"Problem with {obj}")
+                    if break_on_error:
+                        raise e
 
     else:
         from concurrent.futures import ProcessPoolExecutor
 
-        num_objs = len(cm["CityObjects"])
+        num_objs = len(cms[0].cm["CityObjects"])
         num_cores = jobs
 
         with ProcessPoolExecutor(max_workers=num_cores) as pool:
             with tqdm(total=num_objs) as progress:
                 futures = []
 
-                for obj in cm["CityObjects"]:
-                    errors = get_errors_from_report(report, obj, cm)
+                for obj in cms[0].cm["CityObjects"]:
 
-                    neighbours = get_neighbours(cm, obj, r, verts)
+                    if cms[0].cm["CityObjects"][obj]["type"] == "BuildingPart":
 
-                    indices_list = [] if without_indices else None
+                        neighbour_ids = get_neighbours(building_meshes, obj, r)
 
-                    future = pool.submit(process_building,
-                                        cm["CityObjects"][obj],
-                                        obj,
-                                        errors,
-                                        filter,
-                                        repair,
-                                        plot_buildings,
-                                        density_2d,
-                                        density_3d,
-                                        vertices,
-                                        neighbours,
-                                        indices_list)
-                    future.add_done_callback(lambda p: progress.update())
-                    futures.append(future)
+                        indices_list = [] if without_indices else None
+
+                        future = pool.submit(process_building,
+                                            cms[0].cm["CityObjects"][obj],
+                                            obj,
+                                            filter,
+                                            repair,
+                                            plot_buildings,
+                                            cms[0].vertices,
+                                            building_meshes,
+                                            neighbour_ids,
+                                            indices_list)
+                        future.add_done_callback(lambda p: progress.update())
+                        futures.append(future)
                 
                 results = []
                 for future in futures:
