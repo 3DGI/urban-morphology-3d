@@ -591,7 +591,7 @@ def main(inputs,
         for coid, co in cm.cm['CityObjects'].items():
             if co['type'] == "BuildingPart":
                 if i>0:
-                    if not tile_bb.intersects( Polygon( cityjson.get_bbox(co['geometry'][0]) ) ):
+                    if not tile_bb.intersects( Polygon( cityjson.get_bbox(co['geometry'][0]), cm.verts) ):
                         continue
                 mesh = cityjson.to_triangulated_polydata(co['geometry'][0], cm.vertices).clean()
                 mesh.points -= t_origin
