@@ -415,7 +415,7 @@ def process_building(building,
 
     values = {
         # "type": building["type"],
-        "lod": geom["lod"],
+        # "lod": geom["lod"],
         # "point_count": len(points),
         # "unique_point_count": fixed.n_points,
         # "surface_count": len(cityjson.get_surface_boundaries(geom)),
@@ -451,7 +451,7 @@ def process_building(building,
         # "valid": len(errors) == 0,
         # "hole_count": tri_mesh.n_open_edges,
         "geometry": shape,
-        "neighbours": ";".join(neighbour_ids)
+        # "neighbours": ";".join(neighbour_ids)
     }
 
     if custom_indices is None or len(custom_indices) > 0:
@@ -626,7 +626,7 @@ def main(inputs,
                     if not vals is None:
                         parent = cms[0].cm["CityObjects"][obj]["parents"][0]
                         for key, val in cms[0].cm["CityObjects"][parent]["attributes"].items():
-                            if key in ["identificatie", "pw_actueel", "status", "oorpspronkelijkbouwjaar"]:
+                            if key in ["identificatie", "pw_actueel", "status", "oorspronkelijkbouwjaar"]:
                                 vals[key] = val
                         stats[obj] = vals
                 except Exception as e:
@@ -672,7 +672,7 @@ def main(inputs,
                         if not vals is None:
                             parent = cms[0].cm["CityObjects"][obj]["parents"][0]
                             for key, val in cms[0].cm["CityObjects"][parent]["attributes"].items():
-                                if key in ["identificatie", "pw_actueel", "status", "oorpspronkelijkbouwjaar"]:
+                                if key in ["identificatie", "pw_actueel", "status", "oorspronkelijkbouwjaar"]:
                                     vals[key] = val 
                     except Exception as e:
                         print(f"Problem with {obj}")
