@@ -414,7 +414,7 @@ def process_building(building,
     # S, L = si.get_box_dimensions(obb_2d)
 
     values = {
-        "type": building["type"],
+        # "type": building["type"],
         "lod": geom["lod"],
         # "point_count": len(points),
         # "unique_point_count": fixed.n_points,
@@ -426,9 +426,9 @@ def process_building(building,
         # "footprint_perimeter": shape.length,
         # "obb_width": S,
         # "obb_length": L,
-        "surface_area": mesh.area,
+        # "surface_area": mesh.area,
         "ground_area": area["GroundSurface"],
-        "wall_area": area["WallSurface"],
+        # "total_wall_area": area["WallSurface"],
         "roof_flat_area": area["RoofSurfaceFlat"],
         "roof_sloped_area": area["RoofSurfaceSloped"],
         # "ground_point_count": point_count["GroundSurface"],
@@ -528,7 +528,8 @@ def process_building(building,
         # builder.add_index("range_index_3d", lambda: si.range_3d(tri_mesh))
         # builder.add_index("roughness_index_2d", lambda: si.roughness_index_2d(shape, density=density_2d))
         # builder.add_index("roughness_index_3d", lambda: si.roughness_index_3d(tri_mesh, grid, density_2d) if len(grid) > 2 else "NA")
-        builder.add_index("shared_walls_area", lambda: shared_area)
+        builder.add_index("shared_wall_area", lambda: shared_area)
+        builder.add_index("exterior_wall_area", lambda: area["WallSurface"] - shared_area)
         # builder.add_index("closest_distance", lambda: closest_distance)
 
     return building_id, values
@@ -623,6 +624,10 @@ def main(inputs,
                                     neighbour_ids,
                                     indices_list)
                     if not vals is None:
+                        parent = cms[0].cm["CityObjects"][obj]["parents"][0]
+                        for key, val in cms[0].cm["CityObjects"][parent]["attributes"].items():
+                            if key in ["identificatie", "pw_actueel", "status", "oorpspronkelijkbouwjaar"]:
+                                vals[key] = val
                         stats[obj] = vals
                 except Exception as e:
                     print(f"Problem with {obj}")
@@ -665,7 +670,10 @@ def main(inputs,
                     try:
                         obj, vals = future.result()
                         if not vals is None:
-                            stats[obj] = vals
+                            parent = cms[0].cm["CityObjects"][obj]["parents"][0]
+                            for key, val in cms[0].cm["CityObjects"][parent]["attributes"].items():
+                                if key in ["identificatie", "pw_actueel", "status", "oorpspronkelijkbouwjaar"]:
+                                    vals[key] = val 
                     except Exception as e:
                         print(f"Problem with {obj}")
                         if break_on_error:
