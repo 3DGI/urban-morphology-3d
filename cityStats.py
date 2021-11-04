@@ -271,7 +271,7 @@ def get_neighbours(building_meshes, bid, r):
             if n.object != bid]
 
     # if len(bids) == 0:
-    #     bids = [n.object for n in r.nearest((xmin, ymin, zmin, xmax, ymax, zmax), 5, objects=True) if n.object != obj]
+    #     bids = [n.object for n in r.nearest((xmin, ymin, zmin, xmax, ymax, zmax), 5, objects=True) if n.object != bid]
 
     return bids
 
@@ -342,6 +342,8 @@ def process_building(building,
     if plot_buildings:
         print(f"Plotting {building_id}")
         tri_mesh.plot(show_grid=True)
+
+    t_origin = np.min(tri_mesh.points, axis=0)
 
     # get_surface_plot(dataset, title=building_id)
 
@@ -462,10 +464,21 @@ def process_building(building,
                         for nid in neighbour_ids]
             
             # Compute shared walls
+
+            # need to translate to origin to make the clustering work well (both quality of results and performance)
+            fixed.points -= t_origin
+            for neighbour in n_meshes:
+                neighbour.points -= t_origin
+
             walls = np.hstack([geometry.intersect_surfaces([fixed, neighbour])
                             for neighbour in n_meshes])
             
             shared_area = sum([wall["area"][0] for wall in walls])
+
+            # undo translate to not mess up future calculations with these geometries
+            fixed.points += t_origin
+            for neighbour in n_meshes:
+                neighbour.points += t_origin
 
             # Find the closest distance
             # for mesh in n_meshes:
@@ -564,6 +577,7 @@ def main(inputs,
     for input in inputs:
         cms.append( CityModel( json.load(input) ) )
     
+    # we assume the first tile is the current tile we need to compute shared walls for
     active_tile_name = cms[0].cm['metadata']['citymodelIdentifier']    
     
     ge = cms[0].cm['metadata']['geographicalExtent']
@@ -572,6 +586,7 @@ def main(inputs,
 
     building_meshes = {}
 
+    # convert geometries to polydata and select from the neighbour tiles only the ones that intersect with current tile boundary
     for i, cm in enumerate(cms):
         for coid, co in cm.cm['CityObjects'].items():
             if co['type'] == "BuildingPart":
