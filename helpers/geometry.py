@@ -106,13 +106,11 @@ def plane_params(normal, origin, rounding=2):
 
 def project_mesh(mesh, normal, origin):
     """Project the faces of a mesh to the given plane"""
-
     p = []
     for i in range(mesh.n_cells):
         pts = mesh.cell_points(i)
         
         pts_2d = project_2d(pts, normal, origin)
-        
         p.append(Polygon(pts_2d))
     
     return MultiPolygon(p).buffer(0)

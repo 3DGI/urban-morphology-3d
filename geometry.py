@@ -188,6 +188,8 @@ def intersect_surfaces(meshes):
         origin = msurfaces[0].clean().points[0]
         normal = msurfaces[0].face_normals[0]
         
+        if np.linalg.norm(normal) == 0: continue
+
         # Create the two 2D polygons by projecting the faces
         polys = [project_mesh(msurface, normal, origin) for msurface in msurfaces]
         
