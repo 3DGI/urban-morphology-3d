@@ -703,9 +703,10 @@ def main(inputs,
     df["identificatie"] = df["identificatie"].astype(str)
 
     click.echo("Getting BAG footprint areas...")
-
-    df = df.join(other=pd.DataFrame.from_dict(conn.get_dict(query)), on="identificatie",
-                 how="left")
+    df = df.join(other=pd.DataFrame
+                         .from_dict(conn.get_dict(query))
+                         .set_index("identificatie"),
+                 on="identificatie", how="left")
 
     if output is None:
         print(df)
