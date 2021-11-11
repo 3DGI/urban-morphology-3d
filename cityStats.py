@@ -575,6 +575,10 @@ def main(inputs,
          jobs,
          dsn):
     cms = []
+
+    # Check if we can connect to Postgres before we would start processing anything
+    conn = db.Db(dsn=dsn)
+
     for input in inputs:
         cms.append( CityModel( json.load(input) ) )
     
@@ -683,11 +687,10 @@ def main(inputs,
     # orientation_plot(total_xz, bin_edges, title="XZ plot")
     # orientation_plot(total_yz, bin_edges, title="YZ plot")
 
-    conn = db.Db(dsn=dsn)
     query = db.sql.SQL(
         """
-        SELECT p.identificatie                         AS identificatie
-             , round(st_area(p.geometrie)::numeric, 2) AS bag_opp_grond
+        SELECT p.identificatie::text                         AS identificatie
+             , round(st_area(p.geometrie)::numeric, 2)::double precision AS bag_opp_grond
         FROM lvbag.pandactueelbestaand p
         WHERE p.identificatie = ANY({cm_ids});
         """
@@ -697,9 +700,12 @@ def main(inputs,
 
     df = pd.DataFrame.from_dict(stats, orient="index")
     df.index.name = "id"
+    df["identificatie"] = df["identificatie"].astype(str)
 
     click.echo("Getting BAG footprint areas...")
-    df = df.join(pd.DataFrame.from_dict(conn.get_dict(query)), on="identificatie")
+
+    df = df.join(other=pd.DataFrame.from_dict(conn.get_dict(query)), on="identificatie",
+                 how="left")
 
     if output is None:
         print(df)
