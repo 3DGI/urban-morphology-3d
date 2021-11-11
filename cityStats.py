@@ -560,6 +560,7 @@ class CityModel:
 @click.option('-b', '--break-on-error', flag_value=True)
 @click.option('-j', '--jobs', default=1)
 @click.option('-dsn')
+@click.option('--precision', default=2)
 # @click.option('--density-2d', default=1.0)
 # @click.option('--density-3d', default=1.0)
 def main(inputs,
@@ -573,7 +574,8 @@ def main(inputs,
          single_threaded,
          break_on_error,
          jobs,
-         dsn):
+         dsn,
+         precision):
     cms = []
 
     # Check if we can connect to Postgres before we would start processing anything
@@ -689,23 +691,23 @@ def main(inputs,
 
     query = db.sql.SQL(
         """
-        SELECT p.identificatie::text                         AS identificatie
-             , round(st_area(p.geometrie)::numeric, 2)::double precision AS bag_opp_grond
+        SELECT p.identificatie::text    AS identificatie
+             , st_area(p.geometrie)     AS bag_opp_grond
         FROM lvbag.pandactueelbestaand p
         WHERE p.identificatie = ANY({cm_ids});
         """
     ).format(cm_ids=db.sql.Literal(list(cms[0].cm["CityObjects"].keys())))
 
     click.echo("Building data frame...")
-
-    df = pd.DataFrame.from_dict(stats, orient="index")
+    df = pd.DataFrame.from_dict(stats, orient="index").round(precision)
     df.index.name = "id"
     df["identificatie"] = df["identificatie"].astype(str)
 
     click.echo("Getting BAG footprint areas...")
     df = df.join(other=pd.DataFrame
                          .from_dict(conn.get_dict(query))
-                         .set_index("identificatie"),
+                         .set_index("identificatie")
+                         .round(precision),
                  on="identificatie", how="left")
 
     if output is None:
