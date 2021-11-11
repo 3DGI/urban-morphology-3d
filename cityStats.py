@@ -1,22 +1,20 @@
 import json
 import math
-from concurrent.futures import ProcessPoolExecutor
 
 import click
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import geopandas
-import pyvista as pv
 import rtree.index
 import scipy.spatial as ss
 from pymeshfix import MeshFix
 from tqdm import tqdm
 from shapely.geometry import Polygon, box
+from pgutils import db
 
 import cityjson
 import geometry
-import shape_index as si
 
 def get_bearings(values, num_bins, weights):
     """Divides the values depending on the bins"""
@@ -561,6 +559,7 @@ class CityModel:
 @click.option('-s', '--single-threaded', flag_value=True)
 @click.option('-b', '--break-on-error', flag_value=True)
 @click.option('-j', '--jobs', default=1)
+@click.option('-dsn')
 # @click.option('--density-2d', default=1.0)
 # @click.option('--density-3d', default=1.0)
 def main(inputs,
@@ -573,7 +572,8 @@ def main(inputs,
          without_indices,
          single_threaded,
          break_on_error,
-         jobs):
+         jobs,
+         dsn):
     cms = []
     for input in inputs:
         cms.append( CityModel( json.load(input) ) )
@@ -683,10 +683,23 @@ def main(inputs,
     # orientation_plot(total_xz, bin_edges, title="XZ plot")
     # orientation_plot(total_yz, bin_edges, title="YZ plot")
 
+    conn = db.Db(dsn=dsn)
+    query = db.sql.SQL(
+        """
+        SELECT p.identificatie                         AS identificatie
+             , round(st_area(p.geometrie)::numeric, 2) AS bag_opp_grond
+        FROM lvbag.pandactueelbestaand p
+        WHERE p.identificatie = ANY({cm_ids});
+        """
+    ).format(cm_ids=db.sql.Literal(list(cms[0].cm["CityObjects"].keys())))
+
     click.echo("Building data frame...")
 
     df = pd.DataFrame.from_dict(stats, orient="index")
     df.index.name = "id"
+
+    click.echo("Getting BAG footprint areas...")
+    df = df.join(pd.DataFrame.from_dict(conn.get_dict(query)), on="identificatie")
 
     if output is None:
         print(df)
