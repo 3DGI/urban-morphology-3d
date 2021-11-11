@@ -1,22 +1,21 @@
 import json
 import math
-from concurrent.futures import ProcessPoolExecutor
 
 import click
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import geopandas
-import pyvista as pv
 import rtree.index
 import scipy.spatial as ss
 from pymeshfix import MeshFix
 from tqdm import tqdm
 from shapely.geometry import Polygon, box
+from pgutils import db
+import pathlib
 
 import cityjson
 import geometry
-import shape_index as si
 
 def get_bearings(values, num_bins, weights):
     """Divides the values depending on the bins"""
@@ -42,8 +41,8 @@ def get_wall_bearings(dataset, num_bins):
 
     normals = dataset.face_normals
 
-    if "semantics" in dataset.cell_arrays:
-        wall_idxs = [s == "WallSurface" for s in dataset.cell_arrays["semantics"]]
+    if "semantics" in dataset.cell_data:
+        wall_idxs = [s == "WallSurface" for s in dataset.cell_data["semantics"]]
     else:
         wall_idxs = [n[2] == 0 for n in normals]
 
@@ -52,7 +51,7 @@ def get_wall_bearings(dataset, num_bins):
     azimuth = [point_azimuth(n) for n in normals]
 
     sized = dataset.compute_cell_sizes()
-    surface_areas = sized.cell_arrays["Area"][wall_idxs]
+    surface_areas = sized.cell_data["Area"][wall_idxs]
 
     return get_bearings(azimuth, num_bins, surface_areas)
 
@@ -61,8 +60,8 @@ def get_roof_bearings(dataset, num_bins):
 
     normals = dataset.face_normals
 
-    if "semantics" in dataset.cell_arrays:
-        roof_idxs = [s == "RoofSurface" for s in dataset.cell_arrays["semantics"]]
+    if "semantics" in dataset.cell_data:
+        roof_idxs = [s == "RoofSurface" for s in dataset.cell_data["semantics"]]
     else:
         roof_idxs = [n[2] > 0 for n in normals]
 
@@ -72,7 +71,7 @@ def get_roof_bearings(dataset, num_bins):
     yz_angle = [azimuth(n[1], n[2]) for n in normals]
 
     sized = dataset.compute_cell_sizes()
-    surface_areas = sized.cell_arrays["Area"][roof_idxs]
+    surface_areas = sized.cell_data["Area"][roof_idxs]
 
     xz_counts, bin_edges = get_bearings(xz_angle, num_bins, surface_areas)
     yz_counts, bin_edges = get_bearings(yz_angle, num_bins, surface_areas)
@@ -551,7 +550,8 @@ class CityModel:
 # Assume semantic surfaces
 @click.command()
 @click.argument("inputs", nargs=-1, type=click.File("rb"))
-@click.option('-o', '--output', type=click.File("wb"))
+@click.option('-o', '--output', type=click.Path(resolve_path=True,
+                                                path_type=pathlib.Path))
 @click.option('-g', '--gpkg')
 @click.option('-v', '--val3dity-report', type=click.File("rb"))
 @click.option('-f', '--filter')
@@ -561,6 +561,8 @@ class CityModel:
 @click.option('-s', '--single-threaded', flag_value=True)
 @click.option('-b', '--break-on-error', flag_value=True)
 @click.option('-j', '--jobs', default=1)
+@click.option('-dsn')
+@click.option('--precision', default=2)
 # @click.option('--density-2d', default=1.0)
 # @click.option('--density-3d', default=1.0)
 def main(inputs,
@@ -573,8 +575,14 @@ def main(inputs,
          without_indices,
          single_threaded,
          break_on_error,
-         jobs):
+         jobs,
+         dsn,
+         precision):
     cms = []
+
+    # Check if we can connect to Postgres before we would start processing anything
+    conn = db.Db(dsn=dsn)
+
     for input in inputs:
         cms.append( CityModel( json.load(input) ) )
     
@@ -632,6 +640,7 @@ def main(inputs,
                 except Exception as e:
                     print(f"Problem with {obj}")
                     if break_on_error:
+                        conn.close()
                         raise e
 
     else:
@@ -677,26 +686,86 @@ def main(inputs,
                     except Exception as e:
                         print(f"Problem with {obj}")
                         if break_on_error:
+                            conn.close()
                             raise e
 
     # orientation_plot(total_xy, bin_edges, title="Orientation plot")
     # orientation_plot(total_xz, bin_edges, title="XZ plot")
     # orientation_plot(total_yz, bin_edges, title="YZ plot")
 
-    click.echo("Building data frame...")
+    cm_ids = db.sql.Literal(list(cms[0].cm["CityObjects"].keys()))
+    query = db.sql.SQL(
+        """
+        SELECT p.identificatie::text    AS identificatie
+             , st_area(p.geometrie)     AS bag_opp_grond
+        FROM lvbag.pandactueelbestaand p
+        WHERE p.identificatie = ANY({cm_ids});
+        """
+    ).format(cm_ids=cm_ids)
 
-    df = pd.DataFrame.from_dict(stats, orient="index")
+    click.echo("Building data frame...")
+    df = pd.DataFrame.from_dict(stats, orient="index").round(precision)
     df.index.name = "id"
+    df["identificatie"] = df["identificatie"].astype(str)
+
+    click.echo("Getting BAG footprint areas...")
+    df = df.join(other=pd.DataFrame
+                         .from_dict(conn.get_dict(query))
+                         .set_index("identificatie")
+                         .round(precision),
+                 on="identificatie", how="left")
 
     if output is None:
         print(df)
     else:
-        click.echo("Writing output...")
+        click.echo(f"Writing shared walls output to {output}...")
         df.to_csv(output)
     
     if not gpkg is None:
         gdf = geopandas.GeoDataFrame(df, geometry="geometry")
         gdf.to_file(gpkg, driver="GPKG")
+
+    query = db.sql.SQL(
+        """
+        SELECT p.identificatie              AS identificatie_pand
+             , v.identificatie              AS identificatie_vbo
+             , v.gebruiksdoel
+             , v.oppervlakte                AS gebruiksvloeroppervlakte
+             , n_hoofd.postcode
+             , n_hoofd.huisnummer
+             , n_hoofd.huisletter
+             , n_hoofd.huisnummertoevoeging
+             , o.naam                       AS opr_naam
+             , o.type                       AS opr_type
+             , w.naam                       AS wpl_naam
+             , n_neven.postcode             AS na_postcode
+             , n_neven.huisnummer           AS na_huisnummer
+             , n_neven.huisletter           AS na_huisletter
+             , n_neven.huisnummertoevoeging AS na_huisnummertoevoeging
+             , ona.naam                     AS na_opr_naam
+        FROM lvbag.pandactueelbestaand p
+                 JOIN lvbag.verblijfsobjectactueel v ON p.identificatie = ANY (v.pandref)
+                 LEFT JOIN lvbag.nummeraanduidingactueel n_hoofd
+                           ON v.hoofdadresnummeraanduidingref = n_hoofd.identificatie
+                 LEFT JOIN lvbag.nummeraanduidingactueel n_neven
+                           ON n_neven.identificatie = ANY (v.nevenadresnummeraanduidingref)
+                 LEFT JOIN lvbag.openbareruimteactueel o
+                           ON n_hoofd.openbareruimteref = o.identificatie
+                 LEFT JOIN lvbag.woonplaatsactueel w ON o.woonplaatsref = w.identificatie
+                 LEFT JOIN lvbag.openbareruimteactueel ona
+                           ON n_neven.openbareruimteref = o.identificatie
+        WHERE v.pandref <@ {cm_ids}::character varying[];
+        """
+    ).format(cm_ids=cm_ids)
+    if output is not None:
+        output_addr = output.with_name(output.stem + "_addr").with_suffix('.csv')
+        click.echo(f"Writing addresses output to {output_addr}...")
+        pd.DataFrame\
+          .from_dict(conn.get_dict(query))\
+          .rename_axis("id")\
+          .to_csv(output_addr)
+
+    conn.close()
 
 if __name__ == "__main__":
     main()
