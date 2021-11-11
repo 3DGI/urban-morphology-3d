@@ -726,6 +726,7 @@ def main(inputs,
     query = db.sql.SQL(
         """
         SELECT p.identificatie              AS identificatie_pand
+             , v.identificatie              AS identificatie_vbo
              , v.gebruiksdoel
              , v.oppervlakte                AS gebruiksvloeroppervlakte
              , n_hoofd.postcode
@@ -757,7 +758,10 @@ def main(inputs,
     if output is not None:
         output_addr = output.with_name(output.stem + "_addr").with_suffix('.csv')
         click.echo(f"Writing addresses output to {output_addr}...")
-        pd.DataFrame.from_dict(conn.get_dict(query)).to_csv(output_addr)
+        pd.DataFrame\
+          .from_dict(conn.get_dict(query))\
+          .rename_axis("id")\
+          .to_csv(output_addr)
 
 if __name__ == "__main__":
     main()
