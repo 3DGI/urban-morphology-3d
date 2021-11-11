@@ -640,6 +640,7 @@ def main(inputs,
                 except Exception as e:
                     print(f"Problem with {obj}")
                     if break_on_error:
+                        conn.close()
                         raise e
 
     else:
@@ -685,6 +686,7 @@ def main(inputs,
                     except Exception as e:
                         print(f"Problem with {obj}")
                         if break_on_error:
+                            conn.close()
                             raise e
 
     # orientation_plot(total_xy, bin_edges, title="Orientation plot")
@@ -762,6 +764,8 @@ def main(inputs,
           .from_dict(conn.get_dict(query))\
           .rename_axis("id")\
           .to_csv(output_addr)
+
+    conn.close()
 
 if __name__ == "__main__":
     main()
