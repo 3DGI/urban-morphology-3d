@@ -1,5 +1,6 @@
 import json
 import math
+import csv
 
 import click
 import matplotlib.pyplot as plt
@@ -719,7 +720,7 @@ def main(inputs,
         print(df)
     else:
         click.echo(f"Writing shared walls output to {output}...")
-        df.to_csv(output)
+        df.to_csv(output, sep=",", na_rep="\N", quoting=csv.QUOTE_ALL)
     
     if not gpkg is None:
         gdf = geopandas.GeoDataFrame(df, geometry="geometry")
@@ -763,7 +764,7 @@ def main(inputs,
         pd.DataFrame\
           .from_dict(conn.get_dict(query))\
           .rename_axis("id")\
-          .to_csv(output_addr)
+          .to_csv(output_addr, index=False, sep=",", na_rep="\N", quoting=csv.QUOTE_ALL)
 
     conn.close()
 
