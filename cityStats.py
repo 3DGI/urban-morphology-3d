@@ -729,7 +729,7 @@ def main(inputs,
         """
         SELECT p.identificatie              AS identificatie_pand
              , v.identificatie              AS identificatie_vbo
-             , v.gebruiksdoel
+             , '{' || array_to_string(v.gebruiksdoel, ',') || '}' AS gebruiksdoel
              , v.oppervlakte                AS gebruiksvloeroppervlakte
              , n_hoofd.postcode
              , n_hoofd.huisnummer
