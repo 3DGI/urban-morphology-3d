@@ -427,10 +427,10 @@ def process_building(building,
         # "obb_width": S,
         # "obb_length": L,
         # "surface_area": mesh.area,
-        "ground_area": area["GroundSurface"],
+        "area_ground": area["GroundSurface"],
         # "total_wall_area": area["WallSurface"],
-        "roof_flat_area": area["RoofSurfaceFlat"],
-        "roof_sloped_area": area["RoofSurfaceSloped"],
+        "area_roof_flat": area["RoofSurfaceFlat"],
+        "area_roof_sloped": area["RoofSurfaceSloped"],
         # "ground_point_count": point_count["GroundSurface"],
         # "wall_point_count": point_count["WallSurface"],
         # "roof_point_count": point_count["RoofSurface"],
@@ -450,7 +450,7 @@ def process_building(building,
         # "errors": str(errors),
         # "valid": len(errors) == 0,
         # "hole_count": tri_mesh.n_open_edges,
-        "geometry": shape,
+        # "geometry": shape,
         # "neighbours": ";".join(neighbour_ids)
     }
 
@@ -528,8 +528,8 @@ def process_building(building,
         # builder.add_index("range_index_3d", lambda: si.range_3d(tri_mesh))
         # builder.add_index("roughness_index_2d", lambda: si.roughness_index_2d(shape, density=density_2d))
         # builder.add_index("roughness_index_3d", lambda: si.roughness_index_3d(tri_mesh, grid, density_2d) if len(grid) > 2 else "NA")
-        builder.add_index("shared_wall_area", lambda: shared_area)
-        builder.add_index("exterior_wall_area", lambda: area["WallSurface"] - shared_area)
+        builder.add_index("area_shared_wall", lambda: shared_area)
+        builder.add_index("area_exterior_wall", lambda: area["WallSurface"] - shared_area)
         # builder.add_index("closest_distance", lambda: closest_distance)
 
     return building_id, values
@@ -699,7 +699,7 @@ def main(inputs,
     query = db.sql.SQL(
         """
         SELECT p.identificatie::text    AS identificatie
-             , st_area(p.geometrie)     AS bag_opp_grond
+             , st_area(p.geometrie)     AS oppervlakte_bag_geometrie
         FROM lvbag.pandactueelbestaand p
         WHERE p.identificatie = ANY({cm_ids});
         """
