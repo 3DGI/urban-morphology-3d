@@ -1,5 +1,6 @@
 import json
 import math
+import csv
 
 import click
 import matplotlib.pyplot as plt
@@ -587,7 +588,8 @@ def main(inputs,
         cms.append( CityModel( json.load(input) ) )
     
     # we assume the first tile is the current tile we need to compute shared walls for
-    active_tile_name = cms[0].cm['metadata']['citymodelIdentifier']    
+    _a = cms[0].cm['metadata']['citymodelIdentifier']
+    active_tile_name = _a[_a.rfind("_")+1:]
     
     ge = cms[0].cm['metadata']['geographicalExtent']
     tile_bb = box(ge[0], ge[1], ge[3], ge[4])
@@ -714,12 +716,13 @@ def main(inputs,
                          .set_index("identificatie")
                          .round(precision),
                  on="identificatie", how="left")
+    df['tile'] = active_tile_name
 
     if output is None:
         print(df)
     else:
         click.echo(f"Writing shared walls output to {output}...")
-        df.to_csv(output)
+        df.to_csv(output, sep=",", quoting=csv.QUOTE_ALL)
     
     if not gpkg is None:
         gdf = geopandas.GeoDataFrame(df, geometry="geometry")
@@ -729,7 +732,7 @@ def main(inputs,
         """
         SELECT p.identificatie              AS identificatie_pand
              , v.identificatie              AS identificatie_vbo
-             , v.gebruiksdoel
+             , '{{' || array_to_string(v.gebruiksdoel, ',') || '}}' AS gebruiksdoel
              , v.oppervlakte                AS gebruiksvloeroppervlakte
              , n_hoofd.postcode
              , n_hoofd.huisnummer
@@ -760,10 +763,12 @@ def main(inputs,
     if output is not None:
         output_addr = output.with_name(output.stem + "_addr").with_suffix('.csv')
         click.echo(f"Writing addresses output to {output_addr}...")
-        pd.DataFrame\
-          .from_dict(conn.get_dict(query))\
-          .rename_axis("id")\
-          .to_csv(output_addr)
+        df = pd.DataFrame\
+               .from_dict(conn.get_dict(query))\
+               .rename_axis("id")
+        df['tile'] = active_tile_name
+        df.to_csv(output_addr, index=False, sep=",", quoting=csv.QUOTE_ALL)
+
 
     conn.close()
 
