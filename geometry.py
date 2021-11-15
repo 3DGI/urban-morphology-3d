@@ -147,7 +147,7 @@ def cluster_faces(data, threshold=0.1):
     
     return clustering.labels_, clustering.n_clusters_
 
-def intersect_surfaces(meshes):
+def intersect_surfaces(meshes, onlywalls=True):
     """Return the intersection between the surfaces of multiple meshes"""
 
     def get_area_from_ring(areas, area, geom, normal, origin, subtract=False):
@@ -170,10 +170,17 @@ def intersect_surfaces(meshes):
             get_area_from_ring(areas, geom.area, geom.boundary, normal, origin)
     
     n_meshes = len(meshes)
+
+    meshes_to_cluster = []
+    if onlywalls:
+        for mesh in meshes:
+            meshes_to_cluster.append( mesh.remove_cells( [s != 'WallSurface' for s in mesh.cell_arrays["semantics"]], inplace=False ) )
+    else:
+        meshes_to_cluster = meshes
     
     areas = []
     
-    labels, n_clusters = cluster_meshes(meshes)
+    labels, n_clusters = cluster_meshes(meshes_to_cluster)
     
     for plane in range(n_clusters):
         # For every common plane, extract the faces that belong to it
@@ -182,7 +189,7 @@ def intersect_surfaces(meshes):
         if any([len(idx) == 0 for idx in idxs]):
             continue
         
-        msurfaces = [mesh.extract_cells(idxs[i]).extract_surface() for i, mesh in enumerate(meshes)]
+        msurfaces = [mesh.extract_cells(idxs[i]).extract_surface() for i, mesh in enumerate(meshes_to_cluster)]
                 
         # Set the normal and origin point for a plane to project the faces
         origin = msurfaces[0].clean().points[0]
