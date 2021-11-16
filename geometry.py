@@ -174,7 +174,7 @@ def intersect_surfaces(meshes, onlywalls=True):
     meshes_to_cluster = []
     if onlywalls:
         for mesh in meshes:
-            meshes_to_cluster.append( mesh.remove_cells( [s != 'WallSurface' for s in mesh.cell_arrays["semantics"]], inplace=False ) )
+            meshes_to_cluster.append( mesh.remove_cells( [s != 'WallSurface' for s in mesh.cell_data["semantics"]], inplace=False ) )
     else:
         meshes_to_cluster = meshes
     
