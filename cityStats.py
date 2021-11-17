@@ -609,6 +609,10 @@ def main(inputs,
                 mesh.points -= t_origin
                 building_meshes[coid] = mesh
 
+    if len(building_meshes) == 0:
+        click.echo("Aborting, no building meshes found...")
+        return
+
     # Build the index of the city model
     p = rtree.index.Property()
     p.dimension = 3
