@@ -166,8 +166,6 @@ def point_zenith(p):
 def compute_stats(values, percentile = 90, percentage = 75):
     """
     Returns the stats (mean, median, max, min, range etc.) for a set of values.
-    
-    Author: Anna Labetski
     """
     hDic = {'Mean': np.mean(values), 'Median': np.median(values),
     'Max': max(values), 'Min': min(values), 'Range': (max(values) - min(values)),
@@ -487,6 +485,8 @@ def process_building(building,
             #     closest_distance = min(closest_distance, np.min(mesh["implicit_distance"]))
             
             # closest_distance = max(closest_distance, 0)
+        # else:
+            # closest_distance = "NA"
 
         builder = StatValuesBuilder(values, custom_indices)
 
