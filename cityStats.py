@@ -12,6 +12,7 @@ import scipy.spatial as ss
 from pymeshfix import MeshFix
 from tqdm import tqdm
 from shapely.geometry import Polygon, box
+from shapely import MultiPolygon
 from pgutils import db
 import pathlib
 
@@ -312,7 +313,8 @@ def process_building(building,
                      vertices,
                      building_meshes,
                      neighbour_ids=[],
-                     custom_indices=None):
+                     custom_indices=None,
+                     goffset=None):
 
     if not filter is None and filter != building_id:
         return building_id, None
@@ -455,6 +457,7 @@ def process_building(building,
     if custom_indices is None or len(custom_indices) > 0:
 
         shared_area = 0
+        shared_polys = []
 
         if len(neighbour_ids) > 0:
             # Get neighbour meshes
@@ -472,7 +475,7 @@ def process_building(building,
                             for neighbour in n_meshes])
             
             shared_area = sum([wall["area"][0] for wall in walls])
-
+            shared_polys = [Polygon(wall["pts"]+(t_origin+goffset)) for wall in walls]
             # undo translate to not mess up future calculations with these geometries
             fixed.points += t_origin
             for neighbour in n_meshes:
@@ -530,6 +533,7 @@ def process_building(building,
         # builder.add_index("roughness_index_3d", lambda: si.roughness_index_3d(tri_mesh, grid, density_2d) if len(grid) > 2 else "NA")
         builder.add_index("area_shared_wall", lambda: shared_area)
         builder.add_index("area_exterior_wall", lambda: area["WallSurface"] - shared_area)
+        builder.add_index("shared_wall_geometry", lambda: ";".join([poly.wkt for poly in shared_polys]))
         # builder.add_index("closest_distance", lambda: closest_distance)
 
     return building_id, values
@@ -636,7 +640,8 @@ def main(inputs,
                                     cms[0].vertices,
                                     building_meshes,
                                     neighbour_ids,
-                                    indices_list)
+                                    indices_list,
+                                    goffset=t_origin)
                     if not vals is None:
                         parent = cms[0].cm["CityObjects"][obj]["parents"][0]
                         for key, val in cms[0].cm["CityObjects"][parent]["attributes"].items():
@@ -676,7 +681,8 @@ def main(inputs,
                                             cms[0].vertices,
                                             building_meshes,
                                             neighbour_ids,
-                                            indices_list)
+                                            indices_list,
+                                            goffset=t_origin)
                         future.add_done_callback(lambda p: progress.update())
                         futures.append(future)
                 

@@ -157,6 +157,7 @@ def intersect_surfaces(meshes, onlywalls=True):
             common_mesh["area"] = [-area]
         else:
             common_mesh["area"] = [area]
+        common_mesh["pts"]=pts
         areas.append(common_mesh)
 
     def get_area_from_polygon(areas, geom, normal, origin):

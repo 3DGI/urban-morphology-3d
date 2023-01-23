@@ -15,4 +15,4 @@ miniball
 ipygany
 rtree
 scikit-learn
-git+git://github.com/balazsdukai/pgutils@b7118a90#egg=pgutils
+git+https://github.com/balazsdukai/pgutils.git@b7118a90#egg=pgutils
