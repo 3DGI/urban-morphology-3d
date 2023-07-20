@@ -8,11 +8,8 @@ pandas
 geopandas
 tqdm
 shapely
-jupyter
 mapbox-earcut
-python-polylabel
 miniball
-ipygany
 rtree
 scikit-learn
-git+https://github.com/balazsdukai/pgutils.git@b7118a90#egg=pgutils
+git+https://github.com/balazsdukai/pgutils.git@2022.1011#egg=pgutils
