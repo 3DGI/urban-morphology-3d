@@ -770,7 +770,6 @@ def main(inputs,
         WHERE v.pandref <@ {cm_ids}::character varying[];
         """
     ).format(cm_ids=cm_ids)
-    # click.echo(conn.print_query(query))
     if output is not None:
         output_addr = output.with_name(output.stem + "_addr").with_suffix('.csv')
         click.echo(f"Writing addresses output to {output_addr}...")
