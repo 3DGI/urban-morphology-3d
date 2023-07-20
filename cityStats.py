@@ -1,6 +1,8 @@
 import json
 import math
 import csv
+import gzip
+import pathlib
 
 import click
 import matplotlib.pyplot as plt
@@ -13,8 +15,8 @@ from pymeshfix import MeshFix
 from tqdm import tqdm
 from shapely.geometry import Polygon, box
 from shapely import MultiPolygon
-from pgutils import db
-import pathlib
+from pgutils import PostgresConnection
+from psycopg import sql
 
 import cityjson
 import geometry
@@ -191,7 +193,7 @@ def add_value(dict, key, value):
     if key in dict:
         dict[key] = dict[key] + value
     else:
-        area[key] = value
+        dict[key] = value
 
 def convexhull_volume(points):
     """Returns the volume of the convex hull"""
@@ -554,7 +556,7 @@ class CityModel:
 
 # Assume semantic surfaces
 @click.command()
-@click.argument("inputs", nargs=-1, type=click.File("rb"))
+@click.argument("inputs", nargs=-1, type=str)
 @click.option('-o', '--output', type=click.Path(resolve_path=True,
                                                 path_type=pathlib.Path))
 @click.option('-g', '--gpkg')
@@ -586,14 +588,14 @@ def main(inputs,
     cms = []
 
     # Check if we can connect to Postgres before we would start processing anything
-    conn = db.Db(dsn=dsn)
+    conn = PostgresConnection(dsn=dsn)
 
     for input in inputs:
-        cms.append( CityModel( json.load(input) ) )
-    
+        with gzip.open(input, 'r') as fin:
+            cms.append(CityModel(json.loads(fin.read().decode('utf-8'))))
+
     # we assume the first tile is the current tile we need to compute shared walls for
-    _a = cms[0].cm['metadata']['citymodelIdentifier']
-    active_tile_name = _a[_a.rfind("_")+1:]
+    active_tile_name = pathlib.Path(inputs[0]).name.replace(".city.json.gz", "").replace("-", "/")
     
     ge = cms[0].cm['metadata']['geographicalExtent']
     tile_bb = box(ge[0], ge[1], ge[3], ge[4])
@@ -645,13 +647,12 @@ def main(inputs,
                     if not vals is None:
                         parent = cms[0].cm["CityObjects"][obj]["parents"][0]
                         for key, val in cms[0].cm["CityObjects"][parent]["attributes"].items():
-                            if key in ["identificatie", "pw_actueel", "status", "oorspronkelijkbouwjaar"]:
+                            if key in ["identificatie", "status", "oorspronkelijkbouwjaar"]:
                                 vals[key] = val
                         stats[obj] = vals
                 except Exception as e:
                     print(f"Problem with {obj}")
                     if break_on_error:
-                        conn.close()
                         raise e
 
     else:
@@ -693,20 +694,19 @@ def main(inputs,
                         if not vals is None:
                             parent = cms[0].cm["CityObjects"][obj]["parents"][0]
                             for key, val in cms[0].cm["CityObjects"][parent]["attributes"].items():
-                                if key in ["identificatie", "pw_actueel", "status", "oorspronkelijkbouwjaar"]:
+                                if key in ["identificatie", "status", "oorspronkelijkbouwjaar"]:
                                     vals[key] = val 
                     except Exception as e:
                         print(f"Problem with {obj}")
                         if break_on_error:
-                            conn.close()
                             raise e
 
     # orientation_plot(total_xy, bin_edges, title="Orientation plot")
     # orientation_plot(total_xz, bin_edges, title="XZ plot")
     # orientation_plot(total_yz, bin_edges, title="YZ plot")
 
-    cm_ids = db.sql.Literal(list(cms[0].cm["CityObjects"].keys()))
-    query = db.sql.SQL(
+    cm_ids = sql.Literal(list(cms[0].cm["CityObjects"].keys()))
+    query = sql.SQL(
         """
         SELECT p.identificatie::text    AS identificatie
              , st_area(p.geometrie)     AS oppervlakte_bag_geometrie
@@ -722,7 +722,7 @@ def main(inputs,
 
     click.echo("Getting BAG footprint areas...")
     df = df.join(other=pd.DataFrame
-                         .from_dict(conn.get_dict(query))
+                         .from_records(conn.get_dict(query))
                          .set_index("identificatie")
                          .round(precision),
                  on="identificatie", how="left")
@@ -738,7 +738,7 @@ def main(inputs,
         gdf = geopandas.GeoDataFrame(df, geometry="geometry")
         gdf.to_file(gpkg, driver="GPKG")
 
-    query = db.sql.SQL(
+    query = sql.SQL(
         """
         SELECT p.identificatie              AS identificatie_pand
              , v.identificatie              AS identificatie_vbo
@@ -757,30 +757,30 @@ def main(inputs,
              , n_neven.huisnummertoevoeging AS na_huisnummertoevoeging
              , ona.naam                     AS na_opr_naam
         FROM lvbag.pandactueelbestaand p
-                 JOIN lvbag.verblijfsobjectactueel v ON p.identificatie = ANY (v.pandref)
-                 LEFT JOIN lvbag.nummeraanduidingactueel n_hoofd
+                 JOIN lvbag.verblijfsobjectactueelbestaand v ON p.identificatie = ANY (v.pandref)
+                 LEFT JOIN lvbag.nummeraanduidingactueelbestaand n_hoofd
                            ON v.hoofdadresnummeraanduidingref = n_hoofd.identificatie
-                 LEFT JOIN lvbag.nummeraanduidingactueel n_neven
+                 LEFT JOIN lvbag.nummeraanduidingactueelbestaand n_neven
                            ON n_neven.identificatie = ANY (v.nevenadresnummeraanduidingref)
-                 LEFT JOIN lvbag.openbareruimteactueel o
+                 LEFT JOIN lvbag.openbareruimteactueelbestaand o
                            ON n_hoofd.openbareruimteref = o.identificatie
-                 LEFT JOIN lvbag.woonplaatsactueel w ON o.woonplaatsref = w.identificatie
-                 LEFT JOIN lvbag.openbareruimteactueel ona
+                 LEFT JOIN lvbag.woonplaatsactueelbestaand w ON o.woonplaatsref = w.identificatie
+                 LEFT JOIN lvbag.openbareruimteactueelbestaand ona
                            ON n_neven.openbareruimteref = o.identificatie
         WHERE v.pandref <@ {cm_ids}::character varying[];
         """
     ).format(cm_ids=cm_ids)
+    # click.echo(conn.print_query(query))
     if output is not None:
         output_addr = output.with_name(output.stem + "_addr").with_suffix('.csv')
         click.echo(f"Writing addresses output to {output_addr}...")
         df = pd.DataFrame\
-               .from_dict(conn.get_dict(query))\
+               .from_records(conn.get_dict(query))\
                .rename_axis("id")
         df['tile'] = active_tile_name
         df.to_csv(output_addr, index=False, sep=",", quoting=csv.QUOTE_ALL)
+    click.echo("Done")
 
-
-    conn.close()
 
 if __name__ == "__main__":
     main()
