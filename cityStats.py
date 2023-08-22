@@ -592,8 +592,9 @@ def main(inputs,
         cms.append( CityModel( json.load(input) ) )
     
     # we assume the first tile is the current tile we need to compute shared walls for
-    _a = cms[0].cm['metadata']['citymodelIdentifier']
-    active_tile_name = _a[_a.rfind("_")+1:]
+    # _a = cms[0].cm['metadata']['citymodelIdentifier']
+    _a = inputs[0].name.split("/")[-1].split(".")[0]
+    active_tile_name = _a
     
     ge = cms[0].cm['metadata']['geographicalExtent']
     tile_bb = box(ge[0], ge[1], ge[3], ge[4])
