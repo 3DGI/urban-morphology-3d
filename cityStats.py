@@ -738,46 +738,6 @@ def main(inputs,
         gdf = geopandas.GeoDataFrame(df, geometry="geometry")
         gdf.to_file(gpkg, driver="GPKG")
 
-    query = sql.SQL(
-        """
-        SELECT p.identificatie              AS identificatie_pand
-             , v.identificatie              AS identificatie_vbo
-             , '{{' || array_to_string(v.gebruiksdoel, ',') || '}}' AS gebruiksdoel
-             , v.oppervlakte                AS gebruiksvloeroppervlakte
-             , n_hoofd.postcode
-             , n_hoofd.huisnummer
-             , n_hoofd.huisletter
-             , n_hoofd.huisnummertoevoeging
-             , o.naam                       AS opr_naam
-             , o.type                       AS opr_type
-             , w.naam                       AS wpl_naam
-             , n_neven.postcode             AS na_postcode
-             , n_neven.huisnummer           AS na_huisnummer
-             , n_neven.huisletter           AS na_huisletter
-             , n_neven.huisnummertoevoeging AS na_huisnummertoevoeging
-             , ona.naam                     AS na_opr_naam
-        FROM lvbag.pandactueelbestaand p
-                 JOIN lvbag.verblijfsobjectactueelbestaand v ON p.identificatie = ANY (v.pandref)
-                 LEFT JOIN lvbag.nummeraanduidingactueelbestaand n_hoofd
-                           ON v.hoofdadresnummeraanduidingref = n_hoofd.identificatie
-                 LEFT JOIN lvbag.nummeraanduidingactueelbestaand n_neven
-                           ON n_neven.identificatie = ANY (v.nevenadresnummeraanduidingref)
-                 LEFT JOIN lvbag.openbareruimteactueelbestaand o
-                           ON n_hoofd.openbareruimteref = o.identificatie
-                 LEFT JOIN lvbag.woonplaatsactueelbestaand w ON o.woonplaatsref = w.identificatie
-                 LEFT JOIN lvbag.openbareruimteactueelbestaand ona
-                           ON n_neven.openbareruimteref = o.identificatie
-        WHERE v.pandref <@ {cm_ids}::character varying[];
-        """
-    ).format(cm_ids=cm_ids)
-    if output is not None:
-        output_addr = output.with_name(output.stem + "_addr").with_suffix('.csv')
-        click.echo(f"Writing addresses output to {output_addr}...")
-        df = pd.DataFrame\
-               .from_records(conn.get_dict(query))\
-               .rename_axis("id")
-        df['tile'] = active_tile_name
-        df.to_csv(output_addr, index=False, sep=",", quoting=csv.QUOTE_ALL)
     click.echo("Done")
 
 
