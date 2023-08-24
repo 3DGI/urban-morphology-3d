@@ -627,7 +627,7 @@ def main(inputs,
     stats = {}
 
     if single_threaded or jobs == 1:
-        for obj in tqdm(cms[0].cm["CityObjects"]):
+        for obj in cms[0].cm["CityObjects"]:
             if cms[0].cm["CityObjects"][obj]["type"] == "BuildingPart":
                 neighbour_ids = get_neighbours(building_meshes, obj, r)
 
@@ -662,7 +662,6 @@ def main(inputs,
         num_cores = jobs
 
         with ProcessPoolExecutor(max_workers=num_cores) as pool:
-            with tqdm(total=num_objs) as progress:
                 futures = []
 
                 for obj in cms[0].cm["CityObjects"]:
@@ -684,7 +683,6 @@ def main(inputs,
                                             neighbour_ids,
                                             indices_list,
                                             goffset=t_origin)
-                        future.add_done_callback(lambda p: progress.update())
                         futures.append(future)
                 
                 results = []
@@ -727,6 +725,7 @@ def main(inputs,
                          .round(precision),
                  on="identificatie", how="left")
     df['tile'] = active_tile_name
+    df['fprint_area_diff'] = df["area_ground"] - df["oppervlakte_bag_geometrie"]
 
     if output is None:
         print(df)
