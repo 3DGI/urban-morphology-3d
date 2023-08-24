@@ -12,7 +12,6 @@ import geopandas
 import rtree.index
 import scipy.spatial as ss
 from pymeshfix import MeshFix
-from tqdm import tqdm
 from shapely.geometry import Polygon, box
 from shapely import MultiPolygon
 from pgutils import PostgresConnection
@@ -554,24 +553,7 @@ class CityModel:
             self.verts = cm["vertices"]
         self.vertices = np.array(self.verts)
 
-# Assume semantic surfaces
-@click.command()
-@click.argument("inputs", nargs=-1, type=str)
-@click.option('-o', '--output', type=click.Path(resolve_path=True,
-                                                path_type=pathlib.Path))
-@click.option('-g', '--gpkg')
-@click.option('-v', '--val3dity-report', type=click.File("rb"))
-@click.option('-f', '--filter')
-@click.option('-r', '--repair', flag_value=True)
-@click.option('-p', '--plot-buildings', flag_value=True)
-@click.option('--without-indices', flag_value=True)
-@click.option('-s', '--single-threaded', flag_value=True)
-@click.option('-b', '--break-on-error', flag_value=True)
-@click.option('-j', '--jobs', default=1)
-@click.option('-dsn')
-@click.option('--precision', default=2)
-# @click.option('--density-2d', default=1.0)
-# @click.option('--density-3d', default=1.0)
+
 def main(inputs,
          output,
          gpkg,
@@ -595,8 +577,9 @@ def main(inputs,
             cms.append(CityModel(json.loads(fin.read().decode('utf-8'))))
 
     # we assume the first tile is the current tile we need to compute shared walls for
-    active_tile_name = pathlib.Path(inputs[0]).name.replace(".city.json.gz", "").replace("-", "/")
-    
+    active_tile_name = pathlib.Path(inputs[0]).name.replace(".city.json.gz",
+                                                            "").replace("-", "/")
+
     ge = cms[0].cm['metadata']['geographicalExtent']
     tile_bb = box(ge[0], ge[1], ge[3], ge[4])
     t_origin = [(p[0], p[1], 0) for p in tile_bb.centroid.coords]
@@ -607,16 +590,18 @@ def main(inputs,
     for i, cm in enumerate(cms):
         for coid, co in cm.cm['CityObjects'].items():
             if co['type'] == "BuildingPart":
-                if i>0:
-                    minx, maxx, miny, maxy, _, _ = cityjson.get_bbox(co['geometry'][0], cm.verts)
-                    if not tile_bb.intersects( box(minx, miny, maxx, maxy) ):
+                if i > 0:
+                    minx, maxx, miny, maxy, _, _ = cityjson.get_bbox(co['geometry'][0],
+                                                                     cm.verts)
+                    if not tile_bb.intersects(box(minx, miny, maxx, maxy)):
                         continue
-                mesh = cityjson.to_triangulated_polydata(co['geometry'][0], cm.vertices).clean()
+                mesh = cityjson.to_triangulated_polydata(co['geometry'][0],
+                                                         cm.vertices).clean()
                 mesh.points -= t_origin
                 building_meshes[coid] = mesh
 
     if len(building_meshes) == 0:
-        click.echo("Aborting, no building meshes found...")
+        print("Aborting, no building meshes found...")
         return
 
     # Build the index of the city model
@@ -632,22 +617,24 @@ def main(inputs,
                 neighbour_ids = get_neighbours(building_meshes, obj, r)
 
                 indices_list = [] if without_indices else None
-                
+
                 try:
                     obj, vals = process_building(cms[0].cm["CityObjects"][obj],
-                                    obj,
-                                    filter,
-                                    repair,
-                                    plot_buildings,
-                                    cms[0].vertices,
-                                    building_meshes,
-                                    neighbour_ids,
-                                    indices_list,
-                                    goffset=t_origin)
+                                                 obj,
+                                                 filter,
+                                                 repair,
+                                                 plot_buildings,
+                                                 cms[0].vertices,
+                                                 building_meshes,
+                                                 neighbour_ids,
+                                                 indices_list,
+                                                 goffset=t_origin)
                     if not vals is None:
                         parent = cms[0].cm["CityObjects"][obj]["parents"][0]
-                        for key, val in cms[0].cm["CityObjects"][parent]["attributes"].items():
-                            if key in ["identificatie", "status", "oorspronkelijkbouwjaar"]:
+                        for key, val in cms[0].cm["CityObjects"][parent][
+                            "attributes"].items():
+                            if key in ["identificatie", "status",
+                                       "oorspronkelijkbouwjaar"]:
                                 vals[key] = val
                         stats[obj] = vals
                 except Exception as e:
@@ -662,42 +649,43 @@ def main(inputs,
         num_cores = jobs
 
         with ProcessPoolExecutor(max_workers=num_cores) as pool:
-                futures = []
+            futures = []
 
-                for obj in cms[0].cm["CityObjects"]:
+            for obj in cms[0].cm["CityObjects"]:
 
-                    if cms[0].cm["CityObjects"][obj]["type"] == "BuildingPart":
+                if cms[0].cm["CityObjects"][obj]["type"] == "BuildingPart":
+                    neighbour_ids = get_neighbours(building_meshes, obj, r)
 
-                        neighbour_ids = get_neighbours(building_meshes, obj, r)
+                    indices_list = [] if without_indices else None
 
-                        indices_list = [] if without_indices else None
+                    future = pool.submit(process_building,
+                                         cms[0].cm["CityObjects"][obj],
+                                         obj,
+                                         filter,
+                                         repair,
+                                         plot_buildings,
+                                         cms[0].vertices,
+                                         building_meshes,
+                                         neighbour_ids,
+                                         indices_list,
+                                         goffset=t_origin)
+                    futures.append(future)
 
-                        future = pool.submit(process_building,
-                                            cms[0].cm["CityObjects"][obj],
-                                            obj,
-                                            filter,
-                                            repair,
-                                            plot_buildings,
-                                            cms[0].vertices,
-                                            building_meshes,
-                                            neighbour_ids,
-                                            indices_list,
-                                            goffset=t_origin)
-                        futures.append(future)
-                
-                results = []
-                for future in futures:
-                    try:
-                        obj, vals = future.result()
-                        if not vals is None:
-                            parent = cms[0].cm["CityObjects"][obj]["parents"][0]
-                            for key, val in cms[0].cm["CityObjects"][parent]["attributes"].items():
-                                if key in ["identificatie", "status", "oorspronkelijkbouwjaar"]:
-                                    vals[key] = val 
-                    except Exception as e:
-                        print(f"Problem with {obj}")
-                        if break_on_error:
-                            raise e
+            results = []
+            for future in futures:
+                try:
+                    obj, vals = future.result()
+                    if not vals is None:
+                        parent = cms[0].cm["CityObjects"][obj]["parents"][0]
+                        for key, val in cms[0].cm["CityObjects"][parent][
+                            "attributes"].items():
+                            if key in ["identificatie", "status",
+                                       "oorspronkelijkbouwjaar"]:
+                                vals[key] = val
+                except Exception as e:
+                    print(f"Problem with {obj}")
+                    if break_on_error:
+                        raise e
 
     # orientation_plot(total_xy, bin_edges, title="Orientation plot")
     # orientation_plot(total_xz, bin_edges, title="XZ plot")
@@ -713,16 +701,16 @@ def main(inputs,
         """
     ).format(cm_ids=cm_ids)
 
-    click.echo("Building data frame...")
+    print("Building data frame...")
     df = pd.DataFrame.from_dict(stats, orient="index").round(precision)
     df.index.name = "id"
     df["identificatie"] = df["identificatie"].astype(str)
 
-    click.echo("Getting BAG footprint areas...")
+    print("Getting BAG footprint areas...")
     df = df.join(other=pd.DataFrame
-                         .from_records(conn.get_dict(query))
-                         .set_index("identificatie")
-                         .round(precision),
+                 .from_records(conn.get_dict(query))
+                 .set_index("identificatie")
+                 .round(precision),
                  on="identificatie", how="left")
     df['tile'] = active_tile_name
     df['fprint_area_diff'] = df["area_ground"] - df["oppervlakte_bag_geometrie"]
@@ -730,15 +718,61 @@ def main(inputs,
     if output is None:
         print(df)
     else:
-        click.echo(f"Writing shared walls output to {output}...")
+        print(f"Writing shared walls output to {output}...")
         df.to_csv(output, sep=",", quoting=csv.QUOTE_ALL)
-    
+
     if not gpkg is None:
         gdf = geopandas.GeoDataFrame(df, geometry="geometry")
         gdf.to_file(gpkg, driver="GPKG")
 
-    click.echo("Done")
+    print("Done")
+
+
+# Assume semantic surfaces
+@click.command()
+@click.argument("inputs", nargs=-1, type=str)
+@click.option('-o', '--output', type=click.Path(resolve_path=True,
+                                                path_type=pathlib.Path))
+@click.option('-g', '--gpkg')
+@click.option('-v', '--val3dity-report', type=click.File("rb"))
+@click.option('-f', '--filter')
+@click.option('-r', '--repair', flag_value=True)
+@click.option('-p', '--plot-buildings', flag_value=True)
+@click.option('--without-indices', flag_value=True)
+@click.option('-s', '--single-threaded', flag_value=True)
+@click.option('-b', '--break-on-error', flag_value=True)
+@click.option('-j', '--jobs', default=1)
+@click.option('-dsn')
+@click.option('--precision', default=2)
+# @click.option('--density-2d', default=1.0)
+# @click.option('--density-3d', default=1.0)
+def main_cmd(inputs,
+         output,
+         gpkg,
+         val3dity_report,
+         filter,
+         repair,
+         plot_buildings,
+         without_indices,
+         single_threaded,
+         break_on_error,
+         jobs,
+         dsn,
+         precision):
+    main(inputs,
+         output,
+         gpkg,
+         val3dity_report,
+         filter,
+         repair,
+         plot_buildings,
+         without_indices,
+         single_threaded,
+         break_on_error,
+         jobs,
+         dsn,
+         precision)
 
 
 if __name__ == "__main__":
-    main()
+    main_cmd()
