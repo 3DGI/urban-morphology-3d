@@ -5,6 +5,7 @@ import pyvista as pv
 from helpers.geometry import plane_params, project_mesh, to_3d
 from scipy.spatial import distance_matrix
 from sklearn.cluster import AgglomerativeClustering
+from shapely import intersects, Polygon
 
 def get_points_of_type(mesh, surface_type):
     """Returns the points that belong to the given surface type"""
@@ -219,7 +220,7 @@ def cluster_faces_alternative(data, angle_threshold=0.005, dist_threshold=0.2):
     return labels, n_clusters
 
 def intersect_surfaces(meshes, onlywalls=True):
-    """Return the intersection between the surfaces of multiple meshes"""
+    """Return the intersection between the surfaces of multiple meshes. Note first mesh is the one we are computing the surfaces for, following ones are neighbors"""
 
     def get_area_from_ring(areas, area, geom, normal, origin, subtract=False):
         pts = to_3d(geom.coords, normal, origin)
@@ -274,11 +275,13 @@ def intersect_surfaces(meshes, onlywalls=True):
         polys = [project_mesh(msurface, normal, origin) for msurface in msurfaces]
         
         # Intersect the 2D polygons
-        inter = polys[0]
+        inter = Polygon()
+        poly_0 = polys[0]
         for i in range(1, len(polys)):
-            inter = inter.intersection(polys[i])
+            if intersects(poly_0, polys[i]):
+                inter = inter.union(poly_0.intersection(polys[i]))
 
-        if len(polys) > 2: 
+        if len(polys) != 2: 
             print(len(polys))
         
         if inter.area > 0.001:
