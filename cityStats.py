@@ -533,7 +533,7 @@ def process_building(building,
         # builder.add_index("roughness_index_3d", lambda: si.roughness_index_3d(tri_mesh, grid, density_2d) if len(grid) > 2 else "NA")
         builder.add_index("area_shared_wall", lambda: shared_area)
         builder.add_index("area_exterior_wall", lambda: area["WallSurface"] - shared_area)
-        builder.add_index("shared_wall_geometry", lambda: ";".join([poly.wkt for poly in shared_polys]))
+        builder.add_index("shared_wall_geometry", lambda: MultiPolygon([poly for poly in shared_polys]).wkt)
         # builder.add_index("closest_distance", lambda: closest_distance)
 
     return building_id, values
@@ -646,8 +646,12 @@ def main(inputs,
                     if not vals is None:
                         parent = cms[0].cm["CityObjects"][obj]["parents"][0]
                         for key, val in cms[0].cm["CityObjects"][parent]["attributes"].items():
-                            if key in ["identificatie", "pw_actueel", "status", "oorspronkelijkbouwjaar"]:
+                            if key in ["identificatie", "b3_pw_datum", "oorspronkelijkbouwjaar", "b3_volume_lod22"]:
                                 vals[key] = val
+                                if key == "b3_volume_lod22":
+                                    vals["volume"] = val
+                                if key == "b3_pw_datum":
+                                    vals["pw_datum"] = val
                         stats[obj] = vals
                 except Exception as e:
                     print(f"Problem with {obj}")
@@ -694,8 +698,12 @@ def main(inputs,
                         if not vals is None:
                             parent = cms[0].cm["CityObjects"][obj]["parents"][0]
                             for key, val in cms[0].cm["CityObjects"][parent]["attributes"].items():
-                                if key in ["identificatie", "pw_actueel", "status", "oorspronkelijkbouwjaar"]:
-                                    vals[key] = val 
+                                if key in ["identificatie", "b3_pw_datum", "oorspronkelijkbouwjaar", "b3_volume_lod22"]:
+                                    vals[key] = val
+                                    if key == "b3_volume_lod22":
+                                        vals["volume"] = val
+                                    if key == "b3_pw_datum":
+                                        vals["pw_datum"] = val
                     except Exception as e:
                         print(f"Problem with {obj}")
                         if break_on_error:
@@ -710,7 +718,7 @@ def main(inputs,
     query = db.sql.SQL(
         """
         SELECT p.identificatie::text    AS identificatie
-             , st_area(p.geometrie)     AS oppervlakte_bag_geometrie
+             , st_area(p.geometrie)     AS area_bag_source
         FROM lvbag.pandactueelbestaand p
         WHERE p.identificatie = ANY({cm_ids});
         """

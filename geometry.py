@@ -113,7 +113,7 @@ def face_planes(mesh):
     return [plane_params(mesh.face_normals[i], mesh.cell_points(i)[0])
             for i in range(mesh.n_cells)]
 
-def cluster_meshes(meshes, threshold=0.1):
+def cluster_meshes(meshes, angle_degree_threshold=5, dist_threshold=0.5, old_cluster_method=True):
     """Clusters the faces of the given meshes"""
     
     n_meshes = len(meshes)
@@ -122,30 +122,101 @@ def cluster_meshes(meshes, threshold=0.1):
     planes = [face_planes(mesh) for mesh in meshes]
     mesh_ids = [[m for _ in range(meshes[m].n_cells)] for m in range(n_meshes)]
     
+    # convert to cosine distance value
+    # cos_distance = 1 - cos_similarity
+    # angle_rad = arccos(cos_similarity)
+    # angle_deg = angle_rad * (180/pi)
+    cos_dist_thres = 1 - np.cos((np.pi/180) * angle_degree_threshold)
     # Find the common planes between the two faces
     all_planes = np.concatenate(planes)
-    all_labels, n_clusters = cluster_faces(all_planes, threshold)
+    if old_cluster_method:
+        all_labels, n_clusters = cluster_faces_simple(all_planes)
+    else:
+        all_labels, n_clusters = cluster_faces_alternative(all_planes, cos_dist_thres, dist_threshold)
     areas = []
     
     labels = np.array_split(all_labels, [meshes[m].n_cells for m in range(n_meshes - 1)])
     
     return labels, n_clusters
 
-def cluster_faces(data, threshold=0.1):
+def cluster_faces_simple(data, threshold=0.1):
     """Clusters the given planes"""
-    ndata = np.array(data)
-    
-    dm1 = distance_matrix(ndata, ndata)
-    dm2 = distance_matrix(ndata, -ndata)
+    # we can delete the third column because it is all 0's for vertical planes
+    ndata = np.delete(data, 2, 1)
 
-    dist_mat = np.minimum(dm1, dm2)
+    # flip normals so that they can not be pointing in opposite direction for same plane
+    neg_x = ndata[:,0] < 0
+    ndata[neg_x,:] = ndata[neg_x,:] * -1
+
+    dist_mat = distance_matrix(ndata, ndata)
+    # dm2 = distance_matrix(ndata, -ndata)
+    # dist_mat = np.minimum(dm1, dm2)
 
     clustering = AgglomerativeClustering(n_clusters=None,
                                          distance_threshold=threshold,
-                                         affinity='precomputed',
+                                         metric='precomputed',
                                          linkage='average').fit(dist_mat)
     
     return clustering.labels_, clustering.n_clusters_
+
+def cluster_faces_alternative(data, angle_threshold=0.005, dist_threshold=0.2):
+    """Clusters the given planes"""
+    def groupby(a, clusterids):
+        # Get argsort indices, to be used to sort a and clusterids in the next steps
+        sidx = clusterids.argsort(kind='mergesort')
+        a_sorted = a[sidx]
+        clusterids_sorted = clusterids[sidx]
+
+        # Get the group limit indices (start, stop of groups)
+        cut_idx = np.flatnonzero(np.r_[True,clusterids_sorted[1:] != clusterids_sorted[:-1],True])
+
+        # Split input array with those start, stop ones
+        out = [a_sorted[i:j] for i,j in zip(cut_idx[:-1],cut_idx[1:])]
+        return out, sidx
+
+    ndata = np.array(data)
+
+    # original method
+    # dm1 = distance_matrix(ndata, ndata)
+    # dm2 = distance_matrix(ndata, -ndata)
+
+    # dist_mat = np.minimum(dm1, dm2)
+    # clustering = AgglomerativeClustering(n_clusters=None,
+    #                                      distance_threshold=threshold,
+    #                                      affinity='precomputed',
+    #                                      linkage='average').fit(dist_mat)
+
+    # new method - angle clustering
+    # pl_abc = ndata
+    angle_clustering = AgglomerativeClustering(n_clusters=None,
+                                         metric='cosine',
+                                         distance_threshold=angle_threshold,
+                                         linkage='average').fit(ndata[:,:3])
+    # group angle clusters
+    angle_clusters, remap = groupby(ndata[:,3:], angle_clustering.labels_)
+
+    # get dist clusters for each angle cluster
+    labels_ = np.empty(0, dtype=int)
+    min_label = 0
+    for angle_cluster in angle_clusters:
+        if angle_cluster.size == 1:
+            labels_ = np.hstack((labels_, min_label))
+            min_label += 1
+        else:
+            dist_clustering = AgglomerativeClustering(n_clusters=None,
+                                                metric='euclidean',
+                                                distance_threshold=dist_threshold,
+                                                linkage='average').fit(angle_cluster)
+            labels_ = np.hstack((labels_, dist_clustering.labels_ + min_label))
+            min_label = labels_.max()+1
+    
+    # re order back to input data order
+    n_planes = ndata.shape[0]
+    labels = np.empty(n_planes, dtype=int)
+    labels[remap] = labels_
+
+    n_clusters = (np.bincount(labels)!=0).sum()
+    return labels, n_clusters
 
 def intersect_surfaces(meshes, onlywalls=True):
     """Return the intersection between the surfaces of multiple meshes"""
@@ -163,9 +234,10 @@ def intersect_surfaces(meshes, onlywalls=True):
     def get_area_from_polygon(areas, geom, normal, origin):
         # polygon with holes:
         if geom.boundary.type == 'MultiLineString':
-            get_area_from_ring(areas, geom.area, geom.boundary[0], normal, origin)
-            for sgeom in geom.boundary[1:]:
-                get_area_from_ring(areas, 0, sgeom, normal, origin, subtract=True)
+            get_area_from_ring(areas, geom.area, geom.boundary.geoms[0], normal, origin)
+            holes = [g for g in geom.boundary.geoms][1:]
+            for hole in holes:
+                get_area_from_ring(areas, 0, hole, normal, origin, subtract=True)
         # polygon without holes:
         elif geom.boundary.type == 'LineString':
             get_area_from_ring(areas, geom.area, geom.boundary, normal, origin)
