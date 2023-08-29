@@ -718,7 +718,7 @@ def main(inputs,
                  .round(precision),
                  on="identificatie", how="left")
     df['tile'] = active_tile_name
-    df['fprint_area_diff'] = df["area_ground"] - df["oppervlakte_bag_geometrie"]
+    df['fprint_area_diff'] = df["area_ground"] - df["area_bag_source"]
 
     if output is None:
         print(df)
