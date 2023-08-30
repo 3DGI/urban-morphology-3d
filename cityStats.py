@@ -633,11 +633,12 @@ def main(inputs,
                         parent = cms[0].cm["CityObjects"][obj]["parents"][0]
                         for key, val in cms[0].cm["CityObjects"][parent]["attributes"].items():
                             if key in ["identificatie", "status", "b3_pw_datum", "oorspronkelijkbouwjaar", "b3_volume_lod22"]:
-                                vals[key] = val
                                 if key == "b3_volume_lod22":
                                     vals["volume"] = val
                                 if key == "b3_pw_datum":
                                     vals["pw_datum"] = val
+                                else:
+                                    vals[key] = val
                         stats[obj] = vals
                 except Exception as e:
                     print(f"Problem with {obj}")
@@ -682,11 +683,12 @@ def main(inputs,
                         for key, val in cms[0].cm["CityObjects"][parent][
                             "attributes"].items():
                             if key in ["identificatie", "status", "b3_pw_datum", "oorspronkelijkbouwjaar", "b3_volume_lod22"]:
-                                vals[key] = val
                                 if key == "b3_volume_lod22":
                                     vals["volume"] = val
                                 if key == "b3_pw_datum":
                                     vals["pw_datum"] = val
+                                else:
+                                    vals[key] = val
                 except Exception as e:
                     print(f"Problem with {obj}")
                     if break_on_error:
@@ -718,7 +720,12 @@ def main(inputs,
                  .round(precision),
                  on="identificatie", how="left")
     df['tile'] = active_tile_name
-    df['fprint_area_diff'] = df["area_ground"] - df["area_bag_source"]
+    df['area_ground_lost'] = df["area_bag_source"] - df["area_ground"]
+    df['area_opening'] = df["area_exterior_wall"] * 0.2
+    df['ratio_ground_to_volume'] = df["area_ground"] / df["volume"]
+    df['ratio_roof_to_volume'] = (df["area_roof_flat"] + df["area_roof_sloped"]) / df["volume"]
+    df['ratio_exterior_wall_to_volume'] = df["area_exterior_wall"] / df["volume"]
+    df['ratio_opening_to_volume'] = df["area_opening"] / df["volume"]
 
     if output is None:
         print(df)
