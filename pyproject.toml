@@ -62,7 +62,7 @@ optional-dependencies = { dev = ["bumpver", "tox",] }
 where = ["src"]
 
 [tool.bumpver]
-current_version = "2022.1001"
+current_version = "2023.1001"
 version_pattern = "YYYY.BUILD"
 commit_message = "bump version {old_version} -> {new_version}"
 commit = true
