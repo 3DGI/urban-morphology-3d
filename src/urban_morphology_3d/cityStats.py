@@ -17,8 +17,8 @@ from shapely import MultiPolygon
 from pgutils import PostgresConnection
 from psycopg import sql
 
-import cityjson
-import geometry
+from urban_morphology_3d import cityjson
+from urban_morphology_3d import geometry
 
 def get_bearings(values, num_bins, weights):
     """Divides the values depending on the bins"""
