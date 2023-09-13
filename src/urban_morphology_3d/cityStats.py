@@ -3,6 +3,7 @@ import math
 import csv
 import gzip
 import pathlib
+from typing import Sequence
 
 import click
 import matplotlib.pyplot as plt
@@ -578,20 +579,15 @@ class CityModel:
         self.vertices = np.array(self.verts)
 
 
-def process_files(inputs,
-                  output,
-                  gpkg,
-                  filter,
-                  repair,
-                  plot_buildings,
-                  without_indices,
-                  single_threaded,
-                  break_on_error,
-                  jobs,
-                  dsn,
-                  precision):
+def city_stats(inputs: Sequence[str],
+               dsn: str,
+               break_on_error: bool = False,
+               precision: int = 2,
+               repair: bool = False,
+               without_indices: bool = False,
+               plot_buildings: bool = False,
+               filter: str = None) -> pd.DataFrame:
     cms = []
-
     # Check if we can connect to Postgres before we would start processing anything
     conn = PostgresConnection(dsn=dsn)
 
@@ -634,95 +630,40 @@ def process_files(inputs,
 
     stats = {}
 
-    if single_threaded or jobs == 1:
-        for obj in cms[0].cm["CityObjects"]:
-            if cms[0].cm["CityObjects"][obj]["type"] == "BuildingPart":
-                neighbour_ids = get_neighbours(building_meshes, obj, r)
+    for obj in cms[0].cm["CityObjects"]:
+        if cms[0].cm["CityObjects"][obj]["type"] == "BuildingPart":
+            neighbour_ids = get_neighbours(building_meshes, obj, r)
 
-                indices_list = [] if without_indices else None
+            indices_list = [] if without_indices else None
 
-                try:
-                    obj, vals = process_building(cms[0].cm["CityObjects"][obj],
-                                                 obj,
-                                                 filter,
-                                                 repair,
-                                                 plot_buildings,
-                                                 cms[0].vertices,
-                                                 building_meshes,
-                                                 neighbour_ids,
-                                                 indices_list,
-                                                 goffset=t_origin)
-                    if not vals is None:
-                        parent = cms[0].cm["CityObjects"][obj]["parents"][0]
-                        for key, val in cms[0].cm["CityObjects"][parent][
-                            "attributes"].items():
-                            if key in ["identificatie", "status", "b3_pw_datum",
-                                       "oorspronkelijkbouwjaar", "b3_volume_lod22"]:
-                                if key == "b3_volume_lod22":
-                                    vals["volume"] = val
-                                if key == "b3_pw_datum":
-                                    vals["pw_datum"] = val
-                                else:
-                                    vals[key] = val
-                        stats[obj] = vals
-                except Exception as e:
-                    print(f"Problem with {obj}")
-                    if break_on_error:
-                        raise e
-
-    else:
-        from concurrent.futures import ProcessPoolExecutor
-
-        num_objs = len(cms[0].cm["CityObjects"])
-        num_cores = jobs
-
-        with ProcessPoolExecutor(max_workers=num_cores) as pool:
-            futures = []
-
-            for obj in cms[0].cm["CityObjects"]:
-
-                if cms[0].cm["CityObjects"][obj]["type"] == "BuildingPart":
-                    neighbour_ids = get_neighbours(building_meshes, obj, r)
-
-                    indices_list = [] if without_indices else None
-
-                    future = pool.submit(process_building,
-                                         cms[0].cm["CityObjects"][obj],
-                                         obj,
-                                         filter,
-                                         repair,
-                                         plot_buildings,
-                                         cms[0].vertices,
-                                         building_meshes,
-                                         neighbour_ids,
-                                         indices_list,
-                                         goffset=t_origin)
-                    futures.append(future)
-
-            results = []
-            for future in futures:
-                try:
-                    obj, vals = future.result()
-                    if not vals is None:
-                        parent = cms[0].cm["CityObjects"][obj]["parents"][0]
-                        for key, val in cms[0].cm["CityObjects"][parent][
-                            "attributes"].items():
-                            if key in ["identificatie", "status", "b3_pw_datum",
-                                       "oorspronkelijkbouwjaar", "b3_volume_lod22"]:
-                                if key == "b3_volume_lod22":
-                                    vals["volume"] = val
-                                if key == "b3_pw_datum":
-                                    vals["pw_datum"] = val
-                                else:
-                                    vals[key] = val
-                except Exception as e:
-                    print(f"Problem with {obj}")
-                    if break_on_error:
-                        raise e
-
-    # orientation_plot(total_xy, bin_edges, title="Orientation plot")
-    # orientation_plot(total_xz, bin_edges, title="XZ plot")
-    # orientation_plot(total_yz, bin_edges, title="YZ plot")
+            try:
+                obj, vals = process_building(cms[0].cm["CityObjects"][obj],
+                                             obj,
+                                             filter,
+                                             repair,
+                                             plot_buildings,
+                                             cms[0].vertices,
+                                             building_meshes,
+                                             neighbour_ids,
+                                             indices_list,
+                                             goffset=t_origin)
+                if not vals is None:
+                    parent = cms[0].cm["CityObjects"][obj]["parents"][0]
+                    for key, val in cms[0].cm["CityObjects"][parent][
+                        "attributes"].items():
+                        if key in ["identificatie", "status", "b3_pw_datum",
+                                   "oorspronkelijkbouwjaar", "b3_volume_lod22"]:
+                            if key == "b3_volume_lod22":
+                                vals["volume"] = val
+                            if key == "b3_pw_datum":
+                                vals["pw_datum"] = val
+                            else:
+                                vals[key] = val
+                    stats[obj] = vals
+            except Exception as e:
+                print(f"Problem with {obj}")
+                if break_on_error:
+                    raise e
 
     cm_ids = sql.Literal(list(cms[0].cm["CityObjects"].keys()))
     query = sql.SQL(
@@ -753,6 +694,29 @@ def process_files(inputs,
         "volume"]
     df['ratio_exterior_wall_to_volume'] = df["area_exterior_wall"] / df["volume"]
     df['ratio_opening_to_volume'] = df["area_opening"] / df["volume"]
+    return df
+
+
+def process_files(inputs: Sequence[str],
+                  output: str,
+                  dsn: str,
+                  gpkg: str = None,
+                  break_on_error: bool = False,
+                  jobs: int = 1,
+                  precision: int = 2,
+                  repair: bool = False,
+                  without_indices: bool = False,
+                  single_threaded: bool = False,
+                  plot_buildings: bool = False,
+                  filter: str = None):
+    df = city_stats(inputs,
+                    dsn,
+                    break_on_error,
+                    precision,
+                    repair,
+                    without_indices,
+                    plot_buildings,
+                    filter)
 
     if output is None:
         print(df)
@@ -797,18 +761,18 @@ def main_cmd(inputs,
              dsn,
              precision):
     process_files(
-        inputs,
-        output,
-        gpkg,
-        filter,
-        repair,
-        plot_buildings,
-        without_indices,
-        single_threaded,
-        break_on_error,
-        jobs,
-        dsn,
-        precision)
+        inputs=inputs,
+        output=output,
+        gpkg=gpkg,
+        filter=filter,
+        repair=repair,
+        plot_buildings=plot_buildings,
+        without_indices=without_indices,
+        single_threaded=single_threaded,
+        break_on_error=break_on_error,
+        jobs=jobs,
+        dsn=dsn,
+        precision=precision)
 
 
 if __name__ == "__main__":
