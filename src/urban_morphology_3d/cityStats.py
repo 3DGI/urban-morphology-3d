@@ -20,6 +20,7 @@ from psycopg import sql
 from urban_morphology_3d import cityjson
 from urban_morphology_3d import geometry
 
+
 def get_bearings(values, num_bins, weights):
     """Divides the values depending on the bins"""
 
@@ -37,6 +38,7 @@ def get_bearings(values, num_bins, weights):
     bin_edges = bin_edges[range(0, len(bin_edges), 2)]
 
     return bin_counts, bin_edges
+
 
 def get_wall_bearings(dataset, num_bins):
     """Returns the bearings of the azimuth angle of the normals for vertical
@@ -57,6 +59,7 @@ def get_wall_bearings(dataset, num_bins):
     surface_areas = sized.cell_data["Area"][wall_idxs]
 
     return get_bearings(azimuth, num_bins, surface_areas)
+
 
 def get_roof_bearings(dataset, num_bins):
     """Returns the bearings of the (vertical surfaces) of a dataset"""
@@ -81,14 +84,15 @@ def get_roof_bearings(dataset, num_bins):
 
     return xz_counts, yz_counts, bin_edges
 
+
 def orientation_plot(
-    bin_counts,
-    bin_edges,
-    num_bins=36,
-    title=None,
-    title_y=1.05,
-    title_font=None,
-    show=False
+        bin_counts,
+        bin_edges,
+        num_bins=36,
+        title=None,
+        title_y=1.05,
+        title_font=None,
+        show=False
 ):
     if title_font is None:
         title_font = {"family": "DejaVu Sans", "size": 12, "weight": "bold"}
@@ -129,31 +133,35 @@ def orientation_plot(
 
     if show:
         plt.show()
-    
+
     return plt
 
+
 def get_surface_plot(
-    dataset,
-    num_bins=36,
-    title=None,
-    title_y=1.05,
-    title_font=None
+        dataset,
+        num_bins=36,
+        title=None,
+        title_y=1.05,
+        title_font=None
 ):
     """Returns a plot for the surface normals of a polyData"""
-    
+
     bin_counts, bin_edges = get_wall_bearings(dataset, num_bins)
 
     return orientation_plot(bin_counts, bin_edges)
-    
+
+
 def azimuth(dx, dy):
     """Returns the azimuth angle for the given coordinates"""
-    
+
     return (math.atan2(dx, dy) * 180 / np.pi) % 360
+
 
 def point_azimuth(p):
     """Returns the azimuth angle of the given point"""
 
     return azimuth(p[0], p[1])
+
 
 def point_zenith(p):
     """Return the zenith angle of the given 3d point"""
@@ -165,19 +173,21 @@ def point_zenith(p):
 
     return (angle * 180 / np.pi) % 360
 
-def compute_stats(values, percentile = 90, percentage = 75):
+
+def compute_stats(values, percentile=90, percentage=75):
     """
     Returns the stats (mean, median, max, min, range etc.) for a set of values.
     """
     hDic = {'Mean': np.mean(values), 'Median': np.median(values),
-    'Max': max(values), 'Min': min(values), 'Range': (max(values) - min(values)),
-    'Std': np.std(values)}
+            'Max': max(values), 'Min': min(values),
+            'Range': (max(values) - min(values)),
+            'Std': np.std(values)}
     m = max([values.count(a) for a in values])
     if percentile:
         hDic['Percentile'] = np.percentile(values, percentile)
     if percentage:
-        hDic['Percentage'] = (percentage/100.0) * hDic['Range'] + hDic['Min']
-    if m>1:
+        hDic['Percentage'] = (percentage / 100.0) * hDic['Range'] + hDic['Min']
+    if m > 1:
         hDic['ModeStatus'] = 'Y'
         modeCount = [x for x in values if values.count(x) == m][0]
         hDic['Mode'] = modeCount
@@ -185,6 +195,7 @@ def compute_stats(values, percentile = 90, percentage = 75):
         hDic['ModeStatus'] = 'N'
         hDic['Mode'] = np.mean(values)
     return hDic
+
 
 def add_value(dict, key, value):
     """Does dict[key] = dict[key] + value"""
@@ -194,6 +205,7 @@ def add_value(dict, key, value):
     else:
         dict[key] = value
 
+
 def convexhull_volume(points):
     """Returns the volume of the convex hull"""
 
@@ -202,9 +214,10 @@ def convexhull_volume(points):
     except:
         return 0
 
+
 def boundingbox_volume(points):
     """Returns the volume of the bounding box"""
-    
+
     minx = min(p[0] for p in points)
     maxx = max(p[0] for p in points)
     miny = min(p[1] for p in points)
@@ -214,12 +227,13 @@ def boundingbox_volume(points):
 
     return (maxx - minx) * (maxy - miny) * (maxz - minz)
 
+
 def get_errors_from_report(report, objid, cm):
     """Return the report for the feature of the given obj"""
 
     if not "features" in report:
         return []
-    
+
     fid = objid
 
     obj = cm["CityObjects"][objid]
@@ -237,11 +251,13 @@ def get_errors_from_report(report, objid, cm):
     for f in report["features"]:
         if f["id"] == fid:
             if "errors" in f["primitives"][primidx]:
-                return list(map(lambda e: e["code"], f["primitives"][primidx]["errors"]))
+                return list(
+                    map(lambda e: e["code"], f["primitives"][primidx]["errors"]))
             else:
                 return []
 
     return []
+
 
 def validate_report(report, cm):
     """Returns true if the report is actually for this file"""
@@ -249,24 +265,26 @@ def validate_report(report, cm):
     # TODO: Actually validate the report and that it corresponds to this cm
     return True
 
+
 def tree_generator_function(building_meshes):
     for i, (bid, mesh) in enumerate(building_meshes.items()):
         xmin, ymin, zmin = np.min(mesh.points, axis=0)
         xmax, ymax, zmax = np.max(mesh.points, axis=0)
         yield (i, (xmin, ymin, zmin, xmax, ymax, zmax), bid)
 
+
 def get_neighbours(building_meshes, bid, r):
     """Return the neighbours of the given building"""
-    
+
     xmin, ymin, zmin = np.min(building_meshes[bid].points, axis=0)
     xmax, ymax, zmax = np.max(building_meshes[bid].points, axis=0)
     bids = [n.object
             for n in r.intersection((xmin,
-                                    ymin,
-                                    zmin,
-                                    xmax,
-                                    ymax,
-                                    zmax),
+                                     ymin,
+                                     zmin,
+                                     xmax,
+                                     ymax,
+                                     zmax),
                                     objects=True)
             if n.object != bid]
 
@@ -274,6 +292,7 @@ def get_neighbours(building_meshes, bid, r):
     #     bids = [n.object for n in r.nearest((xmin, ymin, zmin, xmax, ymax, zmax), 5, objects=True) if n.object != bid]
 
     return bids
+
 
 class StatValuesBuilder:
 
@@ -285,14 +304,15 @@ class StatValuesBuilder:
         """Returns True if the given index is supposed to be computed"""
 
         return self.__indices_list is None or index_name in self.__indices_list
-    
+
     def add_index(self, index_name, index_func):
         """Adds the given index value to the dict"""
 
         if self.compute_index(index_name):
-            self.__values[index_name] = index_func() 
+            self.__values[index_name] = index_func()
         else:
             self.__values[index_name] = "NC"
+
 
 def filter_lod(cm, lod='2.2'):
     for co_id in cm["CityObjects"]:
@@ -303,8 +323,9 @@ def filter_lod(cm, lod='2.2'):
         for geom in co["geometry"]:
             if str(geom["lod"]) == str(lod):
                 new_geom.append(geom)
-        
+
         co["geometry"] = new_geom
+
 
 def process_building(building,
                      building_id,
@@ -316,7 +337,6 @@ def process_building(building,
                      neighbour_ids=[],
                      custom_indices=None,
                      goffset=None):
-
     if not filter is None and filter != building_id:
         return building_id, None
 
@@ -331,7 +351,7 @@ def process_building(building,
         return building_id, None
 
     geom = building["geometry"][0]
-    
+
     mesh = cityjson.to_polydata(geom, vertices).clean()
 
     try:
@@ -398,7 +418,7 @@ def process_building(building,
             ground_z = min([v[2] for v in ground_points])
         else:
             ground_z = mesh.bounds[4]
-    
+
     if len(ground_points) > 0:
         shape = cityjson.to_shapely(geom, vertices)
     else:
@@ -464,7 +484,7 @@ def process_building(building,
             # Get neighbour meshes
             n_meshes = [building_meshes[nid]
                         for nid in neighbour_ids]
-            
+
             # Compute shared walls
 
             # need to translate to origin to make the clustering work well (both quality of results and performance)
@@ -473,10 +493,11 @@ def process_building(building,
                 neighbour.points -= t_origin
 
             walls = np.hstack([geometry.intersect_surfaces([fixed, neighbour])
-                            for neighbour in n_meshes])
-            
+                               for neighbour in n_meshes])
+
             shared_area = sum([wall["area"][0] for wall in walls])
-            shared_polys = [Polygon(wall["pts"]+(t_origin+goffset)) for wall in walls]
+            shared_polys = [Polygon(wall["pts"] + (t_origin + goffset)) for wall in
+                            walls]
             # undo translate to not mess up future calculations with these geometries
             fixed.points += t_origin
             for neighbour in n_meshes:
@@ -485,12 +506,12 @@ def process_building(building,
             # Find the closest distance
             # for mesh in n_meshes:
             #     mesh.compute_implicit_distance(fixed, inplace=True)
-                            
+
             #     closest_distance = min(closest_distance, np.min(mesh["implicit_distance"]))
-            
+
             # closest_distance = max(closest_distance, 0)
         # else:
-            # closest_distance = "NA"
+        # closest_distance = "NA"
 
         builder = StatValuesBuilder(values, custom_indices)
 
@@ -533,40 +554,42 @@ def process_building(building,
         # builder.add_index("roughness_index_2d", lambda: si.roughness_index_2d(shape, density=density_2d))
         # builder.add_index("roughness_index_3d", lambda: si.roughness_index_3d(tri_mesh, grid, density_2d) if len(grid) > 2 else "NA")
         builder.add_index("area_shared_wall", lambda: shared_area)
-        builder.add_index("area_exterior_wall", lambda: area["WallSurface"] - shared_area)
-        builder.add_index("shared_wall_geometry", lambda: MultiPolygon([poly for poly in shared_polys]).wkt)
+        builder.add_index("area_exterior_wall",
+                          lambda: area["WallSurface"] - shared_area)
+        builder.add_index("shared_wall_geometry",
+                          lambda: MultiPolygon([poly for poly in shared_polys]).wkt)
         # builder.add_index("closest_distance", lambda: closest_distance)
 
     return building_id, values
+
 
 class CityModel:
     def __init__(self, cm) -> None:
         filter_lod(cm)
         self.cm = cm
-        
+
         if "transform" in cm:
             s = cm["transform"]["scale"]
             t = cm["transform"]["translate"]
             self.verts = [[v[0] * s[0] + t[0], v[1] * s[1] + t[1], v[2] * s[2] + t[2]]
-                    for v in cm["vertices"]]
+                          for v in cm["vertices"]]
         else:
             self.verts = cm["vertices"]
         self.vertices = np.array(self.verts)
 
 
-def main(inputs,
-         output,
-         gpkg,
-         val3dity_report,
-         filter,
-         repair,
-         plot_buildings,
-         without_indices,
-         single_threaded,
-         break_on_error,
-         jobs,
-         dsn,
-         precision):
+def process_files(inputs,
+                  output,
+                  gpkg,
+                  filter,
+                  repair,
+                  plot_buildings,
+                  without_indices,
+                  single_threaded,
+                  break_on_error,
+                  jobs,
+                  dsn,
+                  precision):
     cms = []
 
     # Check if we can connect to Postgres before we would start processing anything
@@ -631,8 +654,10 @@ def main(inputs,
                                                  goffset=t_origin)
                     if not vals is None:
                         parent = cms[0].cm["CityObjects"][obj]["parents"][0]
-                        for key, val in cms[0].cm["CityObjects"][parent]["attributes"].items():
-                            if key in ["identificatie", "status", "b3_pw_datum", "oorspronkelijkbouwjaar", "b3_volume_lod22"]:
+                        for key, val in cms[0].cm["CityObjects"][parent][
+                            "attributes"].items():
+                            if key in ["identificatie", "status", "b3_pw_datum",
+                                       "oorspronkelijkbouwjaar", "b3_volume_lod22"]:
                                 if key == "b3_volume_lod22":
                                     vals["volume"] = val
                                 if key == "b3_pw_datum":
@@ -682,7 +707,8 @@ def main(inputs,
                         parent = cms[0].cm["CityObjects"][obj]["parents"][0]
                         for key, val in cms[0].cm["CityObjects"][parent][
                             "attributes"].items():
-                            if key in ["identificatie", "status", "b3_pw_datum", "oorspronkelijkbouwjaar", "b3_volume_lod22"]:
+                            if key in ["identificatie", "status", "b3_pw_datum",
+                                       "oorspronkelijkbouwjaar", "b3_volume_lod22"]:
                                 if key == "b3_volume_lod22":
                                     vals["volume"] = val
                                 if key == "b3_pw_datum":
@@ -723,7 +749,8 @@ def main(inputs,
     df['area_ground_lost'] = df["area_bag_source"] - df["area_ground"]
     df['area_opening'] = df["area_exterior_wall"] * 0.2
     df['ratio_ground_to_volume'] = df["area_ground"] / df["volume"]
-    df['ratio_roof_to_volume'] = (df["area_roof_flat"] + df["area_roof_sloped"]) / df["volume"]
+    df['ratio_roof_to_volume'] = (df["area_roof_flat"] + df["area_roof_sloped"]) / df[
+        "volume"]
     df['ratio_exterior_wall_to_volume'] = df["area_exterior_wall"] / df["volume"]
     df['ratio_opening_to_volume'] = df["area_opening"] / df["volume"]
 
@@ -746,7 +773,6 @@ def main(inputs,
 @click.option('-o', '--output', type=click.Path(resolve_path=True,
                                                 path_type=pathlib.Path))
 @click.option('-g', '--gpkg')
-@click.option('-v', '--val3dity-report', type=click.File("rb"))
 @click.option('-f', '--filter')
 @click.option('-r', '--repair', flag_value=True)
 @click.option('-p', '--plot-buildings', flag_value=True)
@@ -759,31 +785,30 @@ def main(inputs,
 # @click.option('--density-2d', default=1.0)
 # @click.option('--density-3d', default=1.0)
 def main_cmd(inputs,
-         output,
-         gpkg,
-         val3dity_report,
-         filter,
-         repair,
-         plot_buildings,
-         without_indices,
-         single_threaded,
-         break_on_error,
-         jobs,
-         dsn,
-         precision):
-    main(inputs,
-         output,
-         gpkg,
-         val3dity_report,
-         filter,
-         repair,
-         plot_buildings,
-         without_indices,
-         single_threaded,
-         break_on_error,
-         jobs,
-         dsn,
-         precision)
+             output,
+             gpkg,
+             filter,
+             repair,
+             plot_buildings,
+             without_indices,
+             single_threaded,
+             break_on_error,
+             jobs,
+             dsn,
+             precision):
+    process_files(
+        inputs,
+        output,
+        gpkg,
+        filter,
+        repair,
+        plot_buildings,
+        without_indices,
+        single_threaded,
+        break_on_error,
+        jobs,
+        dsn,
+        precision)
 
 
 if __name__ == "__main__":

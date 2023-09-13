@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "urban-morphology-3d"
-version = "2023.1002"
+version = "2023.1003"
 description = "3D Building Metrics"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -58,11 +58,8 @@ dependencies = [
 ]
 optional-dependencies = { dev = ["bumpver", "tox",] }
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
 [tool.bumpver]
-current_version = "2023.1002"
+current_version = "2023.1003"
 version_pattern = "YYYY.BUILD"
 commit_message = "bump version {old_version} -> {new_version}"
 commit = true
