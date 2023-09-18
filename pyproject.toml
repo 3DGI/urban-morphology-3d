@@ -33,7 +33,7 @@ dependencies = [
     "packaging==23.1",
     "pandas==2.1.0",
     "Pillow==10.0.0",
-    "platformdirs==3.9.1",
+    "platformdirs==3.10.0",
     "pooch==1.7.0",
     "pymeshfix==0.16.2",
     "pyparsing==3.0.9",

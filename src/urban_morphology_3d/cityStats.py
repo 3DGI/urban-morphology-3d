@@ -2,6 +2,7 @@ import json
 import math
 import csv
 import gzip
+import os
 import pathlib
 from typing import Sequence
 
@@ -579,7 +580,7 @@ class CityModel:
         self.vertices = np.array(self.verts)
 
 
-def city_stats(inputs: Sequence[str],
+def city_stats(inputs: Sequence[str | os.PathLike[str]],
                dsn: str,
                break_on_error: bool = False,
                precision: int = 2,
@@ -587,6 +588,21 @@ def city_stats(inputs: Sequence[str],
                without_indices: bool = False,
                plot_buildings: bool = False,
                filter: str = None) -> pd.DataFrame:
+    """Compute statistics for a set of CityJSON files, including party walls.
+
+    Args:
+        inputs: A sequence of CityJSON file paths
+        dsn: PostgreSQL connection string
+        break_on_error: Throw the Exceptions. If false, Exceptions are only logged.
+        precision: Round the returned DataFrame to the number of decimal places.
+        repair:
+        without_indices:
+        plot_buildings:
+        filter:
+
+    Returns:
+        A DataFrame of the statistics
+    """
     cms = []
     # Check if we can connect to Postgres before we would start processing anything
     conn = PostgresConnection(dsn=dsn)
