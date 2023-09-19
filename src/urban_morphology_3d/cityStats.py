@@ -608,11 +608,11 @@ def city_stats(inputs: Sequence[str | os.PathLike[str]],
     conn = PostgresConnection(dsn=dsn)
 
     for input in inputs:
-        with gzip.open(input, 'r') as fin:
-            cms.append(CityModel(json.loads(fin.read().decode('utf-8'))))
+        with open(input, "r") as fo:
+            cms.append(CityModel(json.load(fo)))
 
     # we assume the first tile is the current tile we need to compute shared walls for
-    active_tile_name = pathlib.Path(inputs[0]).name.replace(".city.json.gz",
+    active_tile_name = pathlib.Path(inputs[0]).name.replace(".city.json",
                                                             "").replace("-", "/")
 
     ge = cms[0].cm['metadata']['geographicalExtent']
