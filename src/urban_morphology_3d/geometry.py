@@ -127,12 +127,14 @@ def cluster_meshes(meshes, angle_degree_threshold=5, dist_threshold=0.5, old_clu
     # cos_distance = 1 - cos_similarity
     # angle_rad = arccos(cos_similarity)
     # angle_deg = angle_rad * (180/pi)
-    cos_dist_thres = 1 - np.cos((np.pi/180) * angle_degree_threshold)
     # Find the common planes between the two faces
+    while [] in planes:
+        planes.remove([])
     all_planes = np.concatenate(planes)
     if old_cluster_method:
         all_labels, n_clusters = cluster_faces_simple(all_planes)
     else:
+        cos_dist_thres = 1 - np.cos((np.pi/180) * angle_degree_threshold)
         all_labels, n_clusters = cluster_faces_alternative(all_planes, cos_dist_thres, dist_threshold)
     areas = []
     
