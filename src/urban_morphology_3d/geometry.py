@@ -236,13 +236,13 @@ def intersect_surfaces(meshes, onlywalls=True):
 
     def get_area_from_polygon(areas, geom, normal, origin):
         # polygon with holes:
-        if geom.boundary.type == 'MultiLineString':
+        if geom.boundary.geom_type == 'MultiLineString':
             get_area_from_ring(areas, geom.area, geom.boundary.geoms[0], normal, origin)
             holes = [g for g in geom.boundary.geoms][1:]
             for hole in holes:
                 get_area_from_ring(areas, 0, hole, normal, origin, subtract=True)
         # polygon without holes:
-        elif geom.boundary.type == 'LineString':
+        elif geom.boundary.geom_type == 'LineString':
             get_area_from_ring(areas, geom.area, geom.boundary, normal, origin)
     
     n_meshes = len(meshes)
@@ -287,12 +287,12 @@ def intersect_surfaces(meshes, onlywalls=True):
             print(len(polys))
         
         if inter.area > 0.001:
-            if inter.type == "MultiPolygon" or inter.type == "GeometryCollection":
+            if inter.geom_type == "MultiPolygon" or inter.geom_type == "GeometryCollection":
                 for geom in inter.geoms:
-                    if geom.type != "Polygon":
+                    if geom.geom_type != "Polygon":
                         continue
                     get_area_from_polygon(areas, geom, normal, origin)
-            elif inter.type == "Polygon":
+            elif inter.geom_type == "Polygon":
                 get_area_from_polygon(areas, inter, normal, origin)
     
     return areas
