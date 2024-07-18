@@ -55,7 +55,7 @@ dependencies = [
     "urllib3==2.0.4",
     "vtk==9.2.6",
     "zipp==3.16.2",
-    "pgutils @ git+ssh://git@github.com/balazsdukai/pgutils.git@2024.1013#egg=pgutils",
+    "pgutils @ git+https://github.com/balazsdukai/pgutils.git@2024.1013#egg=pgutils",
 ]
 optional-dependencies = { dev = ["bumpver", "tox",] }
 
