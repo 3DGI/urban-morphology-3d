@@ -637,7 +637,7 @@ def city_stats(inputs: Sequence[str | os.PathLike[str]],
 
     if len(building_meshes) == 0:
         print("Aborting, no building meshes found...")
-        return
+        return pd.DataFrame()
 
     # Build the index of the city model
     p = rtree.index.Property()
