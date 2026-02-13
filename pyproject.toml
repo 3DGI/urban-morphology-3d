@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "urban-morphology-3d"
-version = "2024.1006"
+version = "2026.1007"
 description = "3D Building Metrics"
 license = {text = "MIT"}
 readme = "README.md"
