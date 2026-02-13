@@ -11,7 +11,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "attrs==23.1.0",
-    "certifi==2023.5.7",
+    "certifi",
     "charset-normalizer==3.2.0",
     "click==8.1.6",
     "click-plugins==1.1.1",
